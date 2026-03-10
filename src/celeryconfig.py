@@ -6,6 +6,7 @@ All settings are tuned for reliability with a serverless Redis backend.
 """
 
 import sys
+from typing import Any
 
 from src.config import settings
 
@@ -44,7 +45,7 @@ task_default_retry_delay: int = 30  # seconds
 # Upstash uses Redis LIST semantics: a task is invisible to other workers
 # while being processed; if the worker dies before acking, it reappears
 # after visibility_timeout seconds.
-broker_transport_options: dict = {
+broker_transport_options: dict[str, Any] = {
     "visibility_timeout": 3600,  # 1 hour — adjust if tasks can run longer
     "retry_policy": {
         "timeout": 5.0,  # seconds before giving up on a broker connection attempt

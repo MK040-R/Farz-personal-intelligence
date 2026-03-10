@@ -6,6 +6,7 @@ Transcript content is never logged — only IDs are written to the log.
 """
 
 import logging
+from typing import Any
 
 from celery import Celery
 
@@ -17,13 +18,13 @@ celery_app = Celery("farz")
 celery_app.config_from_object(celeryconfig)
 
 
-@celery_app.task(bind=True, max_retries=3, default_retry_delay=30)
+@celery_app.task(bind=True, max_retries=3, default_retry_delay=30)  # type: ignore[untyped-decorator]
 def process_transcript(
-    self,
+    self: Any,
     transcript_id: str,
     user_id: str,
     raw_text: str,
-) -> dict:
+) -> dict[str, Any]:
     """Enqueue a transcript for processing.
 
     Args:
@@ -52,12 +53,12 @@ def process_transcript(
     }
 
 
-@celery_app.task(bind=True, max_retries=3, default_retry_delay=30)
+@celery_app.task(bind=True, max_retries=3, default_retry_delay=30)  # type: ignore[untyped-decorator]
 def generate_brief(
-    self,
+    self: Any,
     conversation_id: str,
     user_id: str,
-) -> dict:
+) -> dict[str, Any]:
     """Enqueue a brief generation job for a conversation.
 
     Args:

@@ -13,6 +13,7 @@ from typing import Literal
 
 import anthropic
 import instructor
+from anthropic.types import TextBlock
 from pydantic import BaseModel, Field
 
 from src.config import settings
@@ -148,18 +149,22 @@ def _raw_client() -> anthropic.Anthropic:
     return anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
 
-def _extract(
-    system_prompt: str, transcript: str, response_model: type, model: _Model = _Model.EXTRACTION
-):
+def _extract[T](
+    system_prompt: str,
+    transcript: str,
+    response_model: type[T],
+    model: _Model = _Model.EXTRACTION,
+) -> T:
     """Run a structured extraction call via instructor. Transcript content is not logged."""
     logger.debug("LLM extraction call — model=%s response_model=%s", model, response_model.__name__)
-    return _instructor_client().messages.create(
+    result: T = _instructor_client().messages.create(  # type: ignore[type-var]
         model=str(model),
         max_tokens=2048,
         system=system_prompt,
         messages=[{"role": "user", "content": f"Here is the meeting transcript:\n\n{transcript}"}],
         response_model=response_model,
     )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -210,4 +215,7 @@ def generate_brief(context: str) -> str:
         system=_BRIEF_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": context}],
     )
-    return response.content[0].text
+    block = response.content[0]
+    if not isinstance(block, TextBlock):
+        raise ValueError(f"Expected TextBlock from brief generation, got {type(block).__name__}")
+    return block.text
