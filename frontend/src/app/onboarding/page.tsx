@@ -29,9 +29,31 @@ function formatDate(value: string): string {
   return date.toLocaleString();
 }
 
+function parseDateBoundary(value: string, boundary: "start" | "end"): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const suffix = boundary === "start" ? "T00:00:00.000" : "T23:59:59.999";
+  const timestamp = Date.parse(`${value}${suffix}`);
+  if (Number.isNaN(timestamp)) {
+    return null;
+  }
+  return timestamp;
+}
+
+function chunkFileIds(fileIds: string[], chunkSize: number): string[][] {
+  const chunks: string[][] = [];
+  for (let index = 0; index < fileIds.length; index += chunkSize) {
+    chunks.push(fileIds.slice(index, index + chunkSize));
+  }
+  return chunks;
+}
+
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_CONSECUTIVE_POLL_ERRORS = 5;
+const MAX_IMPORT_BATCH_SIZE = 20;
 
 export default function OnboardingPage() {
   const [recordings, setRecordings] = useState<RecordingItem[]>([]);
@@ -42,6 +64,8 @@ export default function OnboardingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadRecordings = useCallback(async () => {
@@ -61,6 +85,28 @@ export default function OnboardingPage() {
   useEffect(() => {
     void loadRecordings();
   }, [loadRecordings]);
+
+  useEffect(() => {
+    setSelectedIds((current) => {
+      const selectableIds = new Set(
+        recordings.filter((recording) => !recording.already_imported).map((recording) => recording.file_id),
+      );
+
+      let changed = false;
+      for (const id of current) {
+        if (!selectableIds.has(id)) {
+          changed = true;
+          break;
+        }
+      }
+
+      if (!changed) {
+        return current;
+      }
+
+      return new Set(Array.from(current).filter((id) => selectableIds.has(id)));
+    });
+  }, [recordings]);
 
   useEffect(() => {
     if (jobs.length === 0) {
@@ -167,7 +213,86 @@ export default function OnboardingPage() {
     };
   }, [jobs, jobStatuses]);
 
-  const selectableCount = recordings.filter((item) => !item.already_imported).length;
+  const queueImports = useCallback(async (fileIds: string[]) => {
+    const deduplicatedIds = Array.from(new Set(fileIds));
+    if (deduplicatedIds.length === 0) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      const batches = chunkFileIds(deduplicatedIds, MAX_IMPORT_BATCH_SIZE);
+      const allJobs: ImportJob[] = [];
+
+      for (const batch of batches) {
+        const response = await startImport(batch);
+        allJobs.push(...response.jobs);
+      }
+
+      setJobs(allJobs);
+
+      const initialStates: Record<string, ImportJobStatus> = {};
+      allJobs.forEach((job) => {
+        initialStates[job.job_id] = {
+          job_id: job.job_id,
+          status: "pending",
+        };
+      });
+      setJobStatuses(initialStates);
+      setSelectedIds(new Set());
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Failed to queue import");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, []);
+
+  const hasInvalidDateRange = fromDate !== "" && toDate !== "" && fromDate > toDate;
+  const hasDateFilter = fromDate !== "" || toDate !== "";
+
+  const filteredRecordings = useMemo(() => {
+    if (hasInvalidDateRange) {
+      return [];
+    }
+
+    const fromBoundary = parseDateBoundary(fromDate, "start");
+    const toBoundary = parseDateBoundary(toDate, "end");
+
+    return recordings.filter((recording) => {
+      const createdAt = Date.parse(recording.created_time);
+      if (Number.isNaN(createdAt)) {
+        return true;
+      }
+      if (fromBoundary !== null && createdAt < fromBoundary) {
+        return false;
+      }
+      if (toBoundary !== null && createdAt > toBoundary) {
+        return false;
+      }
+      return true;
+    });
+  }, [fromDate, hasInvalidDateRange, recordings, toDate]);
+
+  const selectableIds = useMemo(
+    () =>
+      recordings.filter((recording) => !recording.already_imported).map((recording) => recording.file_id),
+    [recordings],
+  );
+
+  const visibleSelectableIds = useMemo(
+    () =>
+      filteredRecordings
+        .filter((recording) => !recording.already_imported)
+        .map((recording) => recording.file_id),
+    [filteredRecordings],
+  );
+
+  const selectableCount = selectableIds.length;
+  const visibleSelectableCount = visibleSelectableIds.length;
+  const allVisibleSelected =
+    visibleSelectableIds.length > 0 && visibleSelectableIds.every((id) => selectedIds.has(id));
 
   return (
     <div className="space-y-6">
@@ -214,37 +339,107 @@ export default function OnboardingPage() {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Available recordings</h2>
           <div className="text-sm text-ink-tertiary">
-            {isLoading ? "Loading..." : `${recordings.length} found (${selectableCount} selectable)`}
+            {isLoading
+              ? "Loading..."
+              : hasDateFilter
+                ? `${filteredRecordings.length} shown of ${recordings.length} (${visibleSelectableCount} selectable)`
+                : `${recordings.length} found (${selectableCount} selectable)`}
           </div>
         </div>
 
-        <div className="mb-4">
+        <div className="mb-4 flex flex-wrap items-end gap-3">
+          <label className="flex flex-col gap-1 text-xs uppercase tracking-[0.06em] text-ink-tertiary">
+            From
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(event) => {
+                setFromDate(event.target.value);
+              }}
+              className="rounded border border-standard bg-bg-control px-3 py-1.5 text-sm text-ink-primary"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs uppercase tracking-[0.06em] text-ink-tertiary">
+            To
+            <input
+              type="date"
+              value={toDate}
+              onChange={(event) => {
+                setToDate(event.target.value);
+              }}
+              className="rounded border border-standard bg-bg-control px-3 py-1.5 text-sm text-ink-primary"
+            />
+          </label>
+          <button
+            type="button"
+            disabled={!hasDateFilter || isSubmitting}
+            onClick={() => {
+              setFromDate("");
+              setToDate("");
+            }}
+            className="rounded border border-standard px-3 py-1.5 text-sm text-ink-secondary hover:border-emphasis hover:text-ink-primary disabled:cursor-not-allowed disabled:border-soft disabled:text-ink-muted"
+          >
+            Clear dates
+          </button>
+        </div>
+
+        {hasInvalidDateRange && (
+          <p className="mb-4 text-sm text-accent">From date must be earlier than or equal to To date.</p>
+        )}
+
+        <div className="mb-4 flex flex-wrap gap-3">
+          <button
+            type="button"
+            disabled={visibleSelectableIds.length === 0 || hasInvalidDateRange || isSubmitting}
+            onClick={() => {
+              setSelectedIds((current) => {
+                const next = new Set(current);
+                if (allVisibleSelected) {
+                  visibleSelectableIds.forEach((id) => {
+                    next.delete(id);
+                  });
+                } else {
+                  visibleSelectableIds.forEach((id) => {
+                    next.add(id);
+                  });
+                }
+                return next;
+              });
+            }}
+            className="rounded border border-standard px-4 py-2 text-sm text-ink-secondary hover:border-emphasis hover:text-ink-primary disabled:cursor-not-allowed disabled:border-soft disabled:text-ink-muted"
+          >
+            {allVisibleSelected
+              ? `Deselect visible (${visibleSelectableCount})`
+              : `Select visible (${visibleSelectableCount})`}
+          </button>
+
           <button
             type="button"
             disabled={selectedIds.size === 0 || isSubmitting}
-            onClick={async () => {
-              if (selectedIds.size === 0) {
-                return;
-              }
-              setIsSubmitting(true);
-              setError(null);
-              try {
-                const response = await startImport(Array.from(selectedIds));
-                setJobs(response.jobs);
-                const initialStates: Record<string, ImportJobStatus> = {};
-                response.jobs.forEach((job) => {
-                  initialStates[job.job_id] = {
-                    job_id: job.job_id,
-                    status: "pending",
-                  };
-                });
-                setJobStatuses(initialStates);
-                setSelectedIds(new Set());
-              } catch (submitError) {
-                setError(submitError instanceof Error ? submitError.message : "Failed to queue import");
-              } finally {
-                setIsSubmitting(false);
-              }
+            onClick={() => {
+              setSelectedIds(new Set());
+            }}
+            className="rounded border border-standard px-4 py-2 text-sm text-ink-secondary hover:border-emphasis hover:text-ink-primary disabled:cursor-not-allowed disabled:border-soft disabled:text-ink-muted"
+          >
+            Clear selection
+          </button>
+
+          <button
+            type="button"
+            disabled={selectableIds.length === 0 || hasInvalidDateRange || isSubmitting}
+            onClick={() => {
+              void queueImports(selectableIds);
+            }}
+            className="rounded border border-standard px-4 py-2 text-sm font-medium text-ink-secondary hover:border-emphasis hover:text-ink-primary disabled:cursor-not-allowed disabled:border-soft disabled:text-ink-muted"
+          >
+            {isSubmitting ? "Queueing..." : `Import all selectable (${selectableCount})`}
+          </button>
+
+          <button
+            type="button"
+            disabled={selectedIds.size === 0 || isSubmitting}
+            onClick={() => {
+              void queueImports(Array.from(selectedIds));
             }}
             className="rounded border border-emphasis bg-accent-subtle px-4 py-2 text-sm font-medium text-accent disabled:cursor-not-allowed disabled:border-soft disabled:text-ink-muted"
           >
@@ -255,9 +450,12 @@ export default function OnboardingPage() {
         {recordings.length === 0 && !isLoading && (
           <p className="text-sm text-ink-tertiary">No recordings were returned for the current lookback window.</p>
         )}
+        {recordings.length > 0 && filteredRecordings.length === 0 && !isLoading && !hasInvalidDateRange && (
+          <p className="text-sm text-ink-tertiary">No recordings match the selected date range.</p>
+        )}
 
         <div className="space-y-3">
-          {recordings.map((recording) => {
+          {filteredRecordings.map((recording) => {
             const job = jobs.find((candidate) => candidate.file_id === recording.file_id);
             const status = job ? jobStatuses[job.job_id]?.status : null;
 
