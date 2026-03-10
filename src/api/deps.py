@@ -8,7 +8,7 @@ import time
 from typing import Any
 
 import httpx
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import ExpiredSignatureError, JWTError, jwt
 
@@ -16,7 +16,9 @@ from src.config import settings
 
 logger = logging.getLogger(__name__)
 
-_bearer_scheme = HTTPBearer()
+# auto_error=False so the dependency doesn't raise 403 when no Bearer header is
+# present — we fall back to reading the HttpOnly session cookie instead.
+_bearer_scheme = HTTPBearer(auto_error=False)
 _SUPPORTED_SUPABASE_JWT_ALGORITHMS = {"RS256", "ES256", "HS256"}
 
 _jwks_cache: dict[str, dict[str, Any]] = {}
@@ -88,17 +90,12 @@ async def _get_supabase_jwks(force_refresh: bool = False) -> dict[str, dict[str,
         return _jwks_cache
 
 
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
-) -> dict[str, Any]:
-    """
-    Decode and validate the JWT supplied in the Authorization header.
+async def _validate_jwt(token: str) -> dict[str, Any]:
+    """Decode and validate a Supabase JWT string.
 
-    Returns the decoded payload dict (``sub`` field contains the user_id).
-    Raises HTTP 401 on any validation failure — no token details are logged.
+    Returns the decoded payload with ``_raw_jwt`` injected.
+    Raises HTTP 401 on any failure.
     """
-    token = credentials.credentials
-
     try:
         header: dict[str, Any] = jwt.get_unverified_header(token)
     except JWTError as exc:
@@ -181,3 +178,35 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
         ) from exc
+
+
+async def get_current_user(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+) -> dict[str, Any]:
+    """
+    Resolve the authenticated user from:
+      1. HttpOnly session cookie (preferred — set by /auth/callback)
+      2. Authorization: Bearer <token> header (fallback — for API testing via /docs)
+
+    Returns the decoded JWT payload dict (``sub`` field contains the user_id).
+    Raises HTTP 401 if neither source provides a valid token.
+    """
+    token: str | None = None
+
+    # Try cookie first
+    cookie_token = request.cookies.get("session")
+    if cookie_token:
+        token = cookie_token
+
+    # Fall back to Authorization header
+    if not token and credentials:
+        token = credentials.credentials
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
+
+    return await _validate_jwt(token)

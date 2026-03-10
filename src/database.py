@@ -2,16 +2,22 @@
 Supabase client singleton.
 
 Usage:
-    from src.database import get_client, get_admin_client
+    from src.database import get_client, get_admin_client, get_direct_connection
 
-- get_client(jwt)       — returns a client authenticated as the calling user (respects RLS).
-- get_admin_client()    — returns a service-role client that BYPASSES RLS.
-                          Use ONLY in migration scripts and admin-only tooling.
-                          NEVER call this from API route handlers or Celery workers.
+- get_client(jwt)            — Supabase client authenticated as the user (RLS enforced).
+- get_admin_client()         — Supabase service-role client (BYPASSES RLS).
+                               Use ONLY in migration scripts and admin-only tooling.
+                               NEVER call from API route handlers or Celery workers.
+- get_direct_connection()    — Raw psycopg2 connection via DATABASE_URL.
+                               ONLY for queries that Supabase-py cannot express
+                               (pgvector cosine similarity search). Caller MUST add
+                               WHERE user_id = %s to every query manually.
 """
 
 import logging
 
+import psycopg2
+import psycopg2.extras
 from supabase import Client, create_client
 from supabase.lib.client_options import SyncClientOptions
 
@@ -44,6 +50,29 @@ def get_client(user_jwt: str) -> Client:
     )
     client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY, options=options)
     return client
+
+
+def get_direct_connection() -> psycopg2.extensions.connection:
+    """Return a raw psycopg2 connection via DATABASE_URL.
+
+    Use ONLY for queries that the Supabase PostgREST client cannot express —
+    specifically pgvector cosine similarity search (<=> operator).
+
+    IMPORTANT: This connection bypasses RLS. Every query MUST include an
+    explicit ``WHERE user_id = %s`` clause using a user_id from a validated JWT.
+    Never pass user-supplied strings directly into query parameters — only
+    validated user_id values from the auth dependency.
+
+    The caller is responsible for closing the connection (use a try/finally or
+    a context manager).
+
+    Returns:
+        An open psycopg2 connection with RealDictCursor as default cursor factory.
+    """
+    return psycopg2.connect(
+        settings.DATABASE_URL,
+        cursor_factory=psycopg2.extras.RealDictCursor,
+    )
 
 
 def get_admin_client() -> Client:

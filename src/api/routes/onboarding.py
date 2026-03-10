@@ -2,9 +2,10 @@
 Onboarding routes — Google Drive recording import flow.
 
 Endpoints:
-  GET  /onboarding/available-recordings  — lists Drive recordings not yet imported
-  POST /onboarding/import                — starts ingest jobs for selected recordings
-  GET  /onboarding/import/status/{job_id} — polls the status of a single ingest job
+  GET  /onboarding/available-recordings      — lists Drive recordings not yet imported
+  POST /onboarding/import                    — starts ingest jobs for selected recordings
+  GET  /onboarding/import/status             — aggregate status across all active jobs
+  GET  /onboarding/import/status/{job_id}    — polls the status of a single ingest job
 """
 
 import logging
@@ -56,6 +57,15 @@ class JobStatus(BaseModel):
     status: str   # pending | progress | success | failure
     detail: str | None = None
     result: dict[str, Any] | None = None
+
+
+class AggregateImportStatus(BaseModel):
+    total: int
+    pending: int
+    processing: int
+    succeeded: int
+    failed: int
+    jobs: list[JobStatus]
 
 
 # ---------------------------------------------------------------------------
@@ -260,6 +270,71 @@ async def start_import(
         )
 
     return ImportResponse(jobs=jobs)
+
+
+# ---------------------------------------------------------------------------
+# GET /onboarding/import/status  — user-level aggregate
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/import/status",
+    response_model=AggregateImportStatus,
+    summary="Get aggregate import status for the current user's active jobs",
+)
+def import_status_aggregate(
+    job_ids: str = "",
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> AggregateImportStatus:
+    """Return aggregate status across a comma-separated list of job IDs.
+
+    Pass the job IDs returned by POST /import as a comma-separated query
+    parameter: ``?job_ids=id1,id2,id3``
+
+    Returns per-job status plus summary counts.
+    """
+    if not job_ids.strip():
+        return AggregateImportStatus(
+            total=0, pending=0, processing=0, succeeded=0, failed=0, jobs=[]
+        )
+
+    ids = [j.strip() for j in job_ids.split(",") if j.strip()]
+    job_statuses: list[JobStatus] = []
+    counts = {"pending": 0, "processing": 0, "succeeded": 0, "failed": 0}
+
+    for job_id in ids:
+        result = AsyncResult(job_id, app=celery_app)
+        state = result.state.lower()
+
+        if state == "pending":
+            js = JobStatus(job_id=job_id, status="pending")
+            counts["pending"] += 1
+        elif state == "progress":
+            meta = result.info or {}
+            js = JobStatus(job_id=job_id, status="progress", detail=meta.get("status", "processing"))
+            counts["processing"] += 1
+        elif state == "success":
+            js = JobStatus(
+                job_id=job_id,
+                status="success",
+                result=result.result if isinstance(result.result, dict) else {},
+            )
+            counts["succeeded"] += 1
+        else:
+            error_detail: str = str(result.result) if result.result else "Unknown error"
+            js = JobStatus(job_id=job_id, status="failure", detail=error_detail)
+            counts["failed"] += 1
+
+        job_statuses.append(js)
+
+    return AggregateImportStatus(
+        total=len(ids),
+        pending=counts["pending"],
+        processing=counts["processing"],
+        succeeded=counts["succeeded"],
+        failed=counts["failed"],
+        jobs=job_statuses,
+    )
 
 
 # ---------------------------------------------------------------------------

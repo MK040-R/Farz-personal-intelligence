@@ -187,6 +187,8 @@ class TestIngestRecordingUnit:
             patch("src.workers.ingest.refresh_access_token_sync", return_value="access-token"),
             patch("src.workers.ingest.download_recording_sync", return_value=b"audio-bytes"),
             patch("src.workers.ingest._transcribe_bytes") as mock_transcribe,
+            patch("src.workers.ingest.extract_from_conversation.delay"),
+            patch("src.workers.ingest.embed_conversation.delay"),
         ):
             mock_transcribe.return_value = [
                 {"speaker_id": "speaker_0", "start_ms": 0, "end_ms": 5000, "text": "Hello."},
@@ -245,6 +247,8 @@ class TestIngestRecordingUnit:
             patch("src.workers.ingest.refresh_access_token_sync", return_value="token"),
             patch("src.workers.ingest.download_recording_sync", return_value=b"audio"),
             patch("src.workers.ingest._transcribe_bytes", return_value=[]),
+            patch("src.workers.ingest.extract_from_conversation.delay"),
+            patch("src.workers.ingest.embed_conversation.delay"),
         ):
             db = MagicMock()
             db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []

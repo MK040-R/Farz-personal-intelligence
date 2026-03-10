@@ -29,6 +29,8 @@ from src import celeryconfig
 from src.config import settings
 from src.database import get_client
 from src.drive_client import download_recording_sync, refresh_access_token_sync
+from src.workers.extract import extract_from_conversation
+from src.workers.embed import embed_conversation
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +209,21 @@ def ingest_recording(
         len(utterances),
         user_id,
     )
+
+    # --- Chain downstream tasks: extraction then embedding ---
+    # These are dispatched independently (not as a Celery chain) so that
+    # a failure in extraction/embedding does not affect the ingest result.
+    extract_from_conversation.delay(
+        conversation_id=conversation_id,
+        user_id=user_id,
+        user_jwt=user_jwt,
+    )
+    embed_conversation.delay(
+        conversation_id=conversation_id,
+        user_id=user_id,
+        user_jwt=user_jwt,
+    )
+
     return {
         "conversation_id": conversation_id,
         "segment_count": len(utterances),

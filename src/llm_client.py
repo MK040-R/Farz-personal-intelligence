@@ -13,10 +13,14 @@ from typing import Literal
 
 import anthropic
 import instructor
+import openai
 from anthropic.types import TextBlock
 from pydantic import BaseModel, Field
 
 from src.config import settings
+
+_EMBEDDING_MODEL = "text-embedding-3-small"
+_EMBEDDING_DIMENSIONS = 1536
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +153,10 @@ def _raw_client() -> anthropic.Anthropic:
     return anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
 
+def _openai_client() -> openai.OpenAI:
+    return openai.OpenAI(api_key=settings.OPENAI_API_KEY)
+
+
 def _extract[T](
     system_prompt: str,
     transcript: str,
@@ -197,6 +205,33 @@ def extract_entities(transcript: str) -> EntityList:
         EntityList with validated Entity objects (name, type, mention count).
     """
     return _extract(_ENTITY_SYSTEM_PROMPT, transcript, EntityList)
+
+
+def embed_texts(texts: list[str]) -> list[list[float]]:
+    """Generate embeddings for a list of texts using OpenAI text-embedding-3-small.
+
+    Args:
+        texts: List of strings to embed. Transcript content is not logged.
+
+    Returns:
+        List of embedding vectors (each is a list of 1536 floats), in the same
+        order as the input texts.
+
+    Raises:
+        ValueError: If texts is empty.
+    """
+    if not texts:
+        raise ValueError("texts must be non-empty")
+
+    logger.debug("Embedding %d texts", len(texts))
+    response = _openai_client().embeddings.create(
+        model=_EMBEDDING_MODEL,
+        input=texts,
+        dimensions=_EMBEDDING_DIMENSIONS,
+    )
+    # API guarantees order matches input — sort by index to be safe
+    ordered = sorted(response.data, key=lambda d: d.index)
+    return [item.embedding for item in ordered]
 
 
 def generate_brief(context: str) -> str:

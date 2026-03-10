@@ -1,9 +1,11 @@
 """
 Google OAuth2 routes.
 
-GET /auth/login    — redirects the browser to the Google consent screen.
-GET /auth/callback — exchanges the authorization code for tokens and signs
-                     the user in via Supabase.
+GET  /auth/login     — redirects the browser to the Google consent screen.
+GET  /auth/callback  — exchanges the authorization code for tokens, sets
+                       an HttpOnly session cookie, and redirects to the frontend.
+GET  /auth/session   — returns the current user's id and email (requires session).
+POST /auth/logout    — clears the session cookie.
 """
 
 import logging
@@ -12,10 +14,11 @@ from typing import Any
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import RedirectResponse
 from supabase import create_client
 
+from src.api.deps import get_current_user
 from src.config import settings
 from src.database import get_client
 
@@ -33,6 +36,9 @@ _SCOPES = [
     "https://www.googleapis.com/auth/calendar.readonly",
     "https://www.googleapis.com/auth/drive.readonly",
 ]
+
+# Session cookie lifetime: 1 hour (matches Supabase default JWT expiry)
+_SESSION_COOKIE_MAX_AGE = 3600
 
 
 def _redirect_uri() -> str:
@@ -59,14 +65,15 @@ def login() -> RedirectResponse:
 async def callback(
     code: str,
     error: str | None = None,
-) -> dict[str, Any]:
+) -> RedirectResponse:
     """
     Handle the OAuth2 callback from Google.
 
     1. Raises HTTP 400 if Google returned an error.
     2. Exchanges the authorization code for tokens.
     3. Signs the user in to Supabase with the id_token.
-    4. Returns access_token, refresh_token, and basic user info.
+    4. Sets an HttpOnly session cookie containing the Supabase JWT.
+    5. Redirects the browser to the frontend onboarding page.
     """
     if error is not None:
         logger.warning("Google OAuth returned an error: %s", error)
@@ -125,10 +132,6 @@ async def callback(
     logger.info("User authenticated successfully (user_id=%s)", user.id)
 
     # --- Persist Google tokens and upsert user_index ---
-    # The Google access_token and refresh_token are stored so the ingest
-    # pipeline can call Drive/Calendar APIs on behalf of the user.
-    # The refresh_token is only issued on the first consent — only update
-    # it if Google included one in this response.
     google_access_token: str | None = token_data.get("access_token")
     google_refresh_token: str | None = token_data.get("refresh_token")
 
@@ -151,15 +154,42 @@ async def callback(
         ).execute()
     except Exception as exc:
         # Non-fatal: token storage failing should not block login.
-        # The user can still use the app; onboarding will prompt re-auth
-        # if the tokens are missing later.
         logger.error("Failed to upsert user_index for user=%s: %s", user.id, type(exc).__name__)
 
+    # --- Set HttpOnly session cookie and redirect to frontend ---
+    redirect = RedirectResponse(url=f"{settings.FRONTEND_URL}/onboarding")
+    redirect.set_cookie(
+        key="session",
+        value=session.access_token,
+        httponly=True,
+        samesite="lax",
+        secure=(settings.ENVIRONMENT != "development"),
+        max_age=_SESSION_COOKIE_MAX_AGE,
+        path="/",
+    )
+    return redirect
+
+
+@router.get("/session")
+async def get_session(
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Return the current user's id and email.
+
+    Requires a valid session cookie or Authorization header.
+    Returns 401 if not authenticated.
+    """
     return {
-        "access_token": session.access_token,
-        "refresh_token": session.refresh_token,
-        "user": {
-            "id": user.id,
-            "email": user.email,
-        },
+        "user_id": current_user["sub"],
+        "email": current_user.get("email", ""),
     }
+
+
+@router.post("/logout")
+async def logout(response: Response) -> dict[str, bool]:
+    """Clear the session cookie and sign the user out.
+
+    Always returns 200 — even if the user was not logged in.
+    """
+    response.delete_cookie(key="session", path="/")
+    return {"ok": True}

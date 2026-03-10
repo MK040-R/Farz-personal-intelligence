@@ -44,6 +44,7 @@ _STUB_ENV: dict[str, str] = {
     "SUPABASE_SERVICE_KEY": "stub-service-key",
     "DATABASE_URL": "postgresql://stub:stub@localhost/stub",
     "ANTHROPIC_API_KEY": "sk-ant-stub",
+    "OPENAI_API_KEY": "sk-openai-stub",
     "UPSTASH_REDIS_URL": "rediss://:stub@stub.upstash.io:6379",
     "DEEPGRAM_API_KEY": "stub-deepgram-key",
     "GOOGLE_CLIENT_ID": "stub-client-id.apps.googleusercontent.com",
@@ -168,6 +169,32 @@ def user_b_client(supabase_url: str, _supabase_credentials: TestCredentials) -> 
 # ---------------------------------------------------------------------------
 # Celery fixtures
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def eager_extract() -> Generator[Celery]:
+    """Eager-mode fixture scoped to the extract_from_conversation Celery app."""
+    from src.workers.extract import celery_app as extract_celery_app
+
+    original_eager = bool(extract_celery_app.conf.task_always_eager)
+    original_propagates = bool(extract_celery_app.conf.task_eager_propagates)
+    original_backend = extract_celery_app.conf.result_backend
+    original_cache = getattr(extract_celery_app.conf, "cache_backend", None)
+
+    extract_celery_app.conf.update(
+        task_always_eager=True,
+        task_eager_propagates=True,
+        result_backend="cache",
+        cache_backend="memory",
+    )
+    yield extract_celery_app
+    extract_celery_app.conf.update(
+        task_always_eager=original_eager,
+        task_eager_propagates=original_propagates,
+        result_backend=original_backend,
+    )
+    if original_cache is not None:
+        extract_celery_app.conf.update(cache_backend=original_cache)
 
 
 @pytest.fixture

@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_KEY: str
     DATABASE_URL: str
     ANTHROPIC_API_KEY: str
+    OPENAI_API_KEY: str
     UPSTASH_REDIS_URL: str
     DEEPGRAM_API_KEY: str
     GOOGLE_CLIENT_ID: str

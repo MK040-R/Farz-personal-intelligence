@@ -1,7 +1,7 @@
 # Farz — Build Progress
 
 > This document is written for non-technical readers. It is updated automatically after every completed task.
-> Last updated: 2026-03-10 (Phase 1 Wave 1 complete — Google Drive ingest pipeline built and tested)
+> Last updated: 2026-03-10 (Phase 1 Wave 3 complete — semantic search, topics, commitments, index stats, calendar stub)
 
 ---
 
@@ -47,9 +47,9 @@ Building a software product from scratch happens in stages, like constructing a 
 | Engineer QA review | ✅ Complete | 8 bugs found and fixed, 75/75 QA checks passing |
 | Phase 0 complete | ✅ Complete | Foundation fully built and independently verified |
 | Phase 1 Wave 1 — Google Drive import + transcription pipeline | ✅ Complete | Drive listing, ingest task, 22 tests passing |
-| Phase 1 Wave 2 — AI extraction pipeline + pgvector | ⏳ Next | Topics, commitments, entities, embeddings |
-| Phase 1 Wave 3 — Semantic search endpoint | ⏳ After Wave 2 | GET /search?q=... |
-| Phase 1 Wave 4 — Web UI | ⏳ After Wave 3 | Next.js frontend |
+| Phase 1 Wave 2 — AI extraction pipeline + pgvector | ✅ Complete | Topics, commitments, entities, embeddings, conversations API |
+| Phase 1 Wave 3 — Semantic search + supporting endpoints | ✅ Complete | POST /search, topics, commitments, index stats, calendar |
+| Phase 1 Wave 4 — Web UI | ⏳ Next | Next.js frontend |
 | Phase 2 — Pre-meeting briefs | ⏳ Weeks 13–20 | |
 | Phase 2 — Full dashboard | ⏳ Weeks 13–20 | |
 | Phase 2 — Pre-meeting briefs | ⏳ Weeks 13–20 | |
@@ -310,6 +310,76 @@ This is the first piece of Phase 1 — the pipeline that connects Farz to your G
 - `GET /onboarding/available-recordings` — shows what's available to import
 - `POST /onboarding/import` — starts the import jobs
 - `GET /onboarding/import/status/{job_id}` — check progress
+
+---
+
+---
+
+## ✅ Phase 1 Wave 2 — AI Extraction Pipeline + Conversations API
+
+### What was built
+
+This is the intelligence layer — the part that turns raw transcripts into searchable knowledge.
+
+**What the system can now do:**
+- After a recording is ingested, two background jobs automatically kick off:
+  1. **AI Extraction**: Claude reads the transcript and pulls out topics discussed, commitments made (who, what, and by when), and named entities (people, projects, companies, products). All of this is stored in the database with links back to the exact transcript segments they came from.
+  2. **Semantic Embedding**: Each transcript segment is converted into a mathematical vector (1536-dimensional, via OpenAI's text-embedding-3-small model) and stored in the database. This powers the semantic search coming in Wave 3 — where you search by meaning, not just keywords.
+- The conversations API is now live — you can list all your past meetings and drill into any one of them to see the full AI analysis
+
+**New API endpoints (live now):**
+- `GET /conversations` — list all your meetings (title, date, duration, status: processing or indexed)
+- `GET /conversations/{id}` — full detail: topics, commitments, entities, and transcript segments
+- `GET /conversations/{id}/connections` — returns empty for now; connection detection is Phase 2
+
+**Auth improvements (agreed with frontend):**
+- After signing in, the app now sets an HttpOnly cookie (more secure than the previous approach of storing a token in the browser)
+- `GET /auth/session` — lets the frontend check if the user is logged in on app load
+- `POST /auth/logout` — clears the session
+- API testing via `/docs` still works — you can still pass a Bearer token in the header
+
+**Test coverage:**
+- 7 new unit tests for the extraction pipeline (input validation, ownership checks, happy path, user isolation)
+- All 29 unit tests passing
+
+**New migration:**
+- `migrations/004_conversation_status.sql` — adds a `status` column to conversations (`processing` → `indexed`). Run this against Supabase before deploying.
+
+---
+
+---
+
+## ✅ Phase 1 Wave 3 — Semantic Search + Supporting Endpoints
+
+### What was built
+
+This is the search layer — the part that lets you find anything said in any meeting, just by describing what you're looking for.
+
+**What the system can now do:**
+- You type a question or phrase — e.g. "shipping deadline discussion" or "budget concerns" — and Farz finds the most relevant transcript segments across all your meetings, ranked by semantic similarity (meaning, not keywords)
+- The search converts your query into a mathematical vector (using the same OpenAI embedding model used for transcript segments) and compares it against every stored segment in the database using pgvector's cosine similarity operator
+- All topics, commitments, and index statistics are now accessible via API — the frontend has everything it needs to build the main screens
+
+**New API endpoints (live now):**
+- `POST /search` — semantic search across all transcript segments; body: `{q: string, limit?: 1–50}`; returns ranked results with conversation metadata
+- `GET /topics` — all topics extracted from your meetings, with source conversation title and date
+- `GET /topics/{id}` — single topic with key quotes
+- `GET /commitments` — all commitments (filterable by `?filter_status=open|resolved`)
+- `PATCH /commitments/{id}` — mark a commitment as resolved or re-open it
+- `GET /index/stats` — quick summary: how many conversations, topics, commitments, and entities you have indexed
+- `GET /calendar/today` — today's date plus your open commitments (upcoming meetings will be populated in Phase 2 when Google Calendar sync is built)
+
+**How the search works (for non-technical readers):**
+- When a meeting is imported, each transcript segment is converted into a list of 1,536 numbers that mathematically represent its meaning. These are stored in the database.
+- When you search, your query is also converted into 1,536 numbers.
+- The database then finds all segments whose numbers are closest to your query's numbers — these are the most semantically similar results.
+- The result: searching for "risks with the supplier" will surface segments where people said "I'm worried about the vendor's timeline" even if the word "risk" never appeared.
+
+**Privacy guarantee maintained:** The raw SQL query that drives search applies your user ID as a filter *before* the similarity scan begins. Even though this query bypasses Supabase's Row Level Security (necessary to use pgvector), explicit `WHERE user_id = ?` clauses appear twice in the query — once on transcript segments, once on conversations via the JOIN condition.
+
+**Test coverage:**
+- 9 new unit tests for search (input validation, happy path, error handling, user isolation)
+- All **38 unit tests passing**
 
 ---
 
