@@ -103,8 +103,7 @@ async def _get_meet_folder_ids(
     Returns an empty list if no such folder exists yet.
     """
     meet_folder_query = (
-        "mimeType='application/vnd.google-apps.folder'"
-        " and name='Meet Recordings' and trashed=false"
+        "mimeType='application/vnd.google-apps.folder' and name='Meet Recordings' and trashed=false"
     )
     params = {
         "q": meet_folder_query,
