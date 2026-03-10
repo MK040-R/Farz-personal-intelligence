@@ -1,0 +1,73 @@
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-plus-jakarta: "Plus Jakarta Sans";
+  --font-jetbrains-mono: "JetBrains Mono";
+  --bg-base: #0a1510;
+  --bg-surface: #101d17;
+  --bg-surface-raised: #14231c;
+  --bg-control: #0e1a14;
+  --ink-primary: #f0ede4;
+  --ink-secondary: #cec7b8;
+  --ink-tertiary: #afa894;
+  --ink-muted: #7e786a;
+  --accent: #c9a84c;
+  --accent-subtle: rgba(201, 168, 76, 0.16);
+  --accent-hover: #d6b867;
+  --border-standard: rgba(240, 237, 228, 0.18);
+  --border-soft: rgba(240, 237, 228, 0.1);
+  --border-emphasis: rgba(201, 168, 76, 0.55);
+  --shadow-card: none;
+  --shadow-raised: none;
+  --semantic-open: #c9a84c;
+  --semantic-resolved: #9e9888;
+  --semantic-destructive: #b5ae9c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-base);
+  color: var(--ink-primary);
+  font-family: var(--font-plus-jakarta), system-ui, sans-serif;
+  min-height: 100%;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(201, 168, 76, 0.28);
+}
+
+.card {
+  border: 1px solid var(--border-standard);
+  background: var(--bg-surface);
+  border-radius: 10px;
+}
+
+.muted {
+  color: var(--ink-tertiary);
+}
+
+.mono {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+}
