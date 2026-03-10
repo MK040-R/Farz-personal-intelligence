@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import uuid
 import datetime
+import uuid
 
 from pydantic import BaseModel, ConfigDict
 

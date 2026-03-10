@@ -17,7 +17,6 @@ import pytest
 
 from src.workers.tasks import generate_brief, process_transcript
 
-
 # ---------------------------------------------------------------------------
 # process_transcript — unit tests
 # ---------------------------------------------------------------------------

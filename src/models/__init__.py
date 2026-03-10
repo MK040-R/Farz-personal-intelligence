@@ -24,9 +24,9 @@ __all__ = [
     "Index",
     "IndexCreate",
     "Topic",
-    "TopicCreate",
     "TopicArc",
     "TopicArcCreate",
+    "TopicCreate",
     "TranscriptSegment",
     "TranscriptSegmentCreate",
 ]

@@ -5,6 +5,7 @@ The server must NOT start if any required env var is missing.
 """
 
 import logging
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)

@@ -84,9 +84,7 @@ class TestRLSIsolation:
     """Validates that Supabase RLS enforces strict per-user data isolation for
     the ``conversations`` table."""
 
-    def test_user_a_sees_only_own_rows(
-        self, user_a_client, credentials: dict
-    ) -> None:
+    def test_user_a_sees_only_own_rows(self, user_a_client, credentials: dict) -> None:
         """user_a JWT → query conversations → only user_a rows are returned."""
         user_a_id = credentials["user_a"]["user_id"]
 
@@ -99,9 +97,7 @@ class TestRLSIsolation:
                 f"user_a received a row belonging to a different user: {row['user_id']}"
             )
 
-    def test_user_b_sees_only_own_rows(
-        self, user_b_client, credentials: dict
-    ) -> None:
+    def test_user_b_sees_only_own_rows(self, user_b_client, credentials: dict) -> None:
         """user_b JWT → query conversations → only user_b rows are returned."""
         user_b_id = credentials["user_b"]["user_id"]
 
@@ -141,19 +137,13 @@ class TestRLSIsolation:
 
         # Now try to read that row as user_a — RLS should silently hide it.
         response = (
-            user_a_client.table("conversations")
-            .select("*")
-            .eq("id", user_b_row_id)
-            .execute()
+            user_a_client.table("conversations").select("*").eq("id", user_b_row_id).execute()
         )
         assert response.data == [], (
-            f"user_a was able to read user_b's row (id={user_b_row_id}). "
-            "RLS isolation has FAILED."
+            f"user_a was able to read user_b's row (id={user_b_row_id}). RLS isolation has FAILED."
         )
 
-    def test_service_key_sees_all(
-        self, service_client, credentials: dict
-    ) -> None:
+    def test_service_key_sees_all(self, service_client, credentials: dict) -> None:
         """Service key → query conversations → sees rows for all users (admin access)."""
         user_a_id = credentials["user_a"]["user_id"]
         user_b_id = credentials["user_b"]["user_id"]
@@ -162,16 +152,10 @@ class TestRLSIsolation:
         rows = response.data
 
         owner_ids = {row["user_id"] for row in rows}
-        assert user_a_id in owner_ids, (
-            "Service key should see user_a rows but did not"
-        )
-        assert user_b_id in owner_ids, (
-            "Service key should see user_b rows but did not"
-        )
+        assert user_a_id in owner_ids, "Service key should see user_a rows but did not"
+        assert user_b_id in owner_ids, "Service key should see user_b rows but did not"
 
-    def test_insert_enforces_user_id(
-        self, user_a_client, credentials: dict
-    ) -> None:
+    def test_insert_enforces_user_id(self, user_a_client, credentials: dict) -> None:
         """user_a JWT → INSERT a row with user_b's user_id → should fail (RLS WITH CHECK).
 
         The WITH CHECK clause on the policy ensures that even on INSERT/UPDATE,
@@ -194,6 +178,4 @@ class TestRLSIsolation:
         assert any(
             keyword in error_message
             for keyword in ("violates", "policy", "403", "forbidden", "rls", "check")
-        ), (
-            f"Expected an RLS violation error but got: {exc_info.value}"
-        )
+        ), f"Expected an RLS violation error but got: {exc_info.value}"

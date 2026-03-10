@@ -4,6 +4,7 @@ Celery application and task definitions for Farz workers.
 All tasks include user_id in their payload to enforce per-user isolation.
 Transcript content is never logged — only IDs are written to the log.
 """
+
 import logging
 
 from celery import Celery
@@ -74,9 +75,7 @@ def generate_brief(
     if not user_id:
         raise ValueError("user_id is required and must be non-empty")
 
-    logger.info(
-        "Generating brief for conversation %s, user %s", conversation_id, user_id
-    )
+    logger.info("Generating brief for conversation %s, user %s", conversation_id, user_id)
 
     # Actual brief generation logic is implemented in Phase 1.
     return {

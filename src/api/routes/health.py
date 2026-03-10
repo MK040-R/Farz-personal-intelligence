@@ -5,7 +5,9 @@ GET /health  →  {"status": "ok", "environment": "<current environment>"}
 """
 
 import logging
+
 from fastapi import APIRouter
+
 from src.config import settings
 
 logger = logging.getLogger(__name__)

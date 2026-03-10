@@ -57,9 +57,7 @@ for _key, _val in _STUB_ENV.items():
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    config.addinivalue_line(
-        "markers", "unit: marks tests as unit tests (no external deps)"
-    )
+    config.addinivalue_line("markers", "unit: marks tests as unit tests (no external deps)")
     config.addinivalue_line(
         "markers",
         "integration: marks tests as integration tests (requires real credentials)",
@@ -71,10 +69,7 @@ def pytest_configure(config: pytest.Config) -> None:
 # ---------------------------------------------------------------------------
 
 _CREDENTIALS_PATH = (
-    Path(__file__).parent.parent
-    / "spikes"
-    / "spike4_supabase_rls"
-    / "test_credentials.json"
+    Path(__file__).parent.parent / "spikes" / "spike4_supabase_rls" / "test_credentials.json"
 )
 
 
@@ -83,9 +78,7 @@ def supabase_url() -> str:
     """Read SUPABASE_URL from the environment; skip if not configured."""
     url = os.environ.get("SUPABASE_URL", "").strip()
     if not url or url == _STUB_ENV["SUPABASE_URL"]:
-        pytest.skip(
-            "SUPABASE_URL not configured — skipping Supabase integration tests."
-        )
+        pytest.skip("SUPABASE_URL not configured — skipping Supabase integration tests.")
     return url
 
 
@@ -94,9 +87,7 @@ def supabase_service_key() -> str:
     """Read SUPABASE_SERVICE_KEY from the environment; skip if not configured."""
     key = os.environ.get("SUPABASE_SERVICE_KEY", "").strip()
     if not key or key == _STUB_ENV["SUPABASE_SERVICE_KEY"]:
-        pytest.skip(
-            "SUPABASE_SERVICE_KEY not configured — skipping Supabase integration tests."
-        )
+        pytest.skip("SUPABASE_SERVICE_KEY not configured — skipping Supabase integration tests.")
     return key
 
 
@@ -123,7 +114,7 @@ def _build_user_client(
     refresh_token: str,
 ):
     """Return a Supabase client authenticated as a specific user via JWT."""
-    from supabase import create_client  # noqa: PLC0415
+    from supabase import create_client
 
     client = create_client(url, anon_key)
     client.auth.set_session(access_token, refresh_token)
@@ -136,7 +127,7 @@ def service_client(supabase_url: str, supabase_service_key: str):
 
     Bypasses RLS — represents server-side admin access.
     """
-    from supabase import create_client  # noqa: PLC0415
+    from supabase import create_client
 
     return create_client(supabase_url, supabase_service_key)
 
@@ -146,9 +137,7 @@ def user_a_client(supabase_url: str, _supabase_credentials: dict):
     """Supabase client authenticated as test User A."""
     anon_key = os.environ.get("SUPABASE_ANON_KEY", "")
     creds = _supabase_credentials["user_a"]
-    return _build_user_client(
-        supabase_url, anon_key, creds["access_token"], creds["refresh_token"]
-    )
+    return _build_user_client(supabase_url, anon_key, creds["access_token"], creds["refresh_token"])
 
 
 @pytest.fixture(scope="session")
@@ -156,9 +145,7 @@ def user_b_client(supabase_url: str, _supabase_credentials: dict):
     """Supabase client authenticated as test User B."""
     anon_key = os.environ.get("SUPABASE_ANON_KEY", "")
     creds = _supabase_credentials["user_b"]
-    return _build_user_client(
-        supabase_url, anon_key, creds["access_token"], creds["refresh_token"]
-    )
+    return _build_user_client(supabase_url, anon_key, creds["access_token"], creds["refresh_token"])
 
 
 # ---------------------------------------------------------------------------
@@ -174,7 +161,7 @@ def eager_app():
     Tasks run inline in the calling process — no worker, no broker, no
     network.  Results are returned directly from .delay()/.apply_async().
     """
-    from src.workers.tasks import celery_app  # noqa: PLC0415
+    from src.workers.tasks import celery_app
 
     celery_app.conf.update(
         task_always_eager=True,

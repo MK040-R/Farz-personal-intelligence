@@ -4,6 +4,7 @@ Celery configuration for Farz — Upstash Redis broker.
 Reads UPSTASH_REDIS_URL from the settings singleton (fail-fast if missing).
 All settings are tuned for reliability with a serverless Redis backend.
 """
+
 import sys
 
 from src.config import settings
@@ -15,13 +16,10 @@ from src.config import settings
 # original spike behaviour for belt-and-suspenders safety.
 REDIS_URL: str = settings.UPSTASH_REDIS_URL
 
-_running_as_worker: bool = any(
-    arg in sys.argv for arg in ("worker", "beat", "inspect", "control")
-)
+_running_as_worker: bool = any(arg in sys.argv for arg in ("worker", "beat", "inspect", "control"))
 if not REDIS_URL and _running_as_worker:
-    raise EnvironmentError(
-        "UPSTASH_REDIS_URL is not set. "
-        "Copy .env.example to .env and add your Upstash Redis URL."
+    raise OSError(
+        "UPSTASH_REDIS_URL is not set. Copy .env.example to .env and add your Upstash Redis URL."
     )
 
 broker_url: str = REDIS_URL
