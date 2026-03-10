@@ -237,7 +237,11 @@ async def start_import(
             await refresh_access_token(refresh_token), lookback_days=120
         )
     except Exception as exc:
-        logger.error("Drive listing failed during import for user=%s: %s", user_id, type(exc).__name__)
+        logger.error(
+            "Drive listing failed during import for user=%s: %s",
+            user_id,
+            type(exc).__name__,
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Failed to retrieve file metadata from Google Drive.",

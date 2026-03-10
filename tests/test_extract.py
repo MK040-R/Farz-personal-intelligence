@@ -16,7 +16,6 @@ import pytest
 
 from src.workers.extract import extract_from_conversation
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -59,7 +58,6 @@ def _make_full_db_mock(
     """Return a mock DB that simulates a full happy-path run."""
     db = MagicMock()
 
-    call_count = [0]
 
     def select_side_effect(*args: Any, **kwargs: Any) -> MagicMock:
         """Route select() calls by what table() was called with."""
@@ -195,7 +193,14 @@ class TestExtractNoSegments:
 class TestExtractHappyPath:
     def test_full_extraction_returns_correct_counts(self, eager_extract: Any) -> None:
         """Happy path: 2 topics, 1 commitment, 3 entities extracted and stored."""
-        from src.llm_client import CommitmentList, CommitmentResult, EntityList, EntityResult, TopicList, TopicResult
+        from src.llm_client import (
+            CommitmentList,
+            CommitmentResult,
+            EntityList,
+            EntityResult,
+            TopicList,
+            TopicResult,
+        )
 
         segments = [_make_segment("We discussed the Q3 roadmap.")]
 
