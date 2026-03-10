@@ -114,9 +114,7 @@ async def list_meet_recordings(
     since = datetime.now(tz=UTC) - timedelta(days=lookback_days)
     since_str = since.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    mime_clause = " or ".join(
-        f"mimeType='{mt}'" for mt in _RECORDING_MIME_TYPES
-    )
+    mime_clause = " or ".join(f"mimeType='{mt}'" for mt in _RECORDING_MIME_TYPES)
     query = f"({mime_clause}) and createdTime >= '{since_str}' and trashed = false"
 
     params = {
@@ -145,9 +143,7 @@ async def list_meet_recordings(
                 DriveRecording(
                     file_id=f["id"],
                     name=f["name"],
-                    created_time=datetime.fromisoformat(
-                        f["createdTime"].replace("Z", "+00:00")
-                    ),
+                    created_time=datetime.fromisoformat(f["createdTime"].replace("Z", "+00:00")),
                     size_bytes=int(f["size"]) if f.get("size") else None,
                     mime_type=f["mimeType"],
                 )

@@ -149,9 +149,7 @@ async def callback(
 
     try:
         user_db = get_client(session.access_token)
-        user_db.table("user_index").upsert(
-            user_index_row, on_conflict="user_id"
-        ).execute()
+        user_db.table("user_index").upsert(user_index_row, on_conflict="user_id").execute()
     except Exception as exc:
         # Non-fatal: token storage failing should not block login.
         logger.error("Failed to upsert user_index for user=%s: %s", user.id, type(exc).__name__)

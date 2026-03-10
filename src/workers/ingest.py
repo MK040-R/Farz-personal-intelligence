@@ -200,9 +200,9 @@ def ingest_recording(
         db.table("transcript_segments").insert(segments).execute()
 
     # --- Step 6: Update user_index last_updated ---
-    db.table("user_index").update(
-        {"last_updated": datetime.now(tz=UTC).isoformat()}
-    ).eq("user_id", user_id).execute()
+    db.table("user_index").update({"last_updated": datetime.now(tz=UTC).isoformat()}).eq(
+        "user_id", user_id
+    ).execute()
 
     logger.info(
         "Ingest complete — conversation=%s segments=%d user=%s",

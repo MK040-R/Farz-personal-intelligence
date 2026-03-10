@@ -76,9 +76,7 @@ def embed_conversation(
         .execute()
     )
     if not conv_result.data:
-        raise RuntimeError(
-            f"Conversation {conversation_id} not found for user {user_id}"
-        )
+        raise RuntimeError(f"Conversation {conversation_id} not found for user {user_id}")
 
     # --- Load segments that need embeddings ---
     self.update_state(state="PROGRESS", meta={"status": "loading_segments"})
@@ -94,9 +92,7 @@ def embed_conversation(
     segments: list[dict[str, Any]] = segments_result.data or []
 
     if not segments:
-        logger.info(
-            "No unembedded segments for conversation=%s — nothing to do", conversation_id
-        )
+        logger.info("No unembedded segments for conversation=%s — nothing to do", conversation_id)
         return {"conversation_id": conversation_id, "segment_count": 0}
 
     # --- Batch embed ---
@@ -112,9 +108,9 @@ def embed_conversation(
 
         # Update each segment with its embedding vector
         for seg, vector in zip(batch, vectors, strict=True):
-            db.table("transcript_segments").update(
-                {"embedding": vector}
-            ).eq("id", seg["id"]).execute()
+            db.table("transcript_segments").update({"embedding": vector}).eq(
+                "id", seg["id"]
+            ).execute()
 
         total_embedded += len(batch)
         logger.info(

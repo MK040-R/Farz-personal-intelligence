@@ -55,7 +55,7 @@ class ImportResponse(BaseModel):
 class JobStatus(BaseModel):
     job_id: str
     file_id: str | None = None
-    status: str   # pending | progress | success | failure
+    status: str  # pending | progress | success | failure
     detail: str | None = None
     result: dict[str, Any] | None = None
 
@@ -176,9 +176,7 @@ async def available_recordings(
         .execute()
     )
     imported_ids: set[str] = {
-        row["drive_file_id"]
-        for row in (imported_result.data or [])
-        if row.get("drive_file_id")
+        row["drive_file_id"] for row in (imported_result.data or []) if row.get("drive_file_id")
     }
 
     return [

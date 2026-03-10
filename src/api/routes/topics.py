@@ -139,11 +139,13 @@ def get_topic(
     )
     conv = conv_result.data[0] if conv_result.data else {}
     conversations = (
-        [TopicConversation(
-            id=conv["id"],
-            title=conv.get("title", ""),
-            meeting_date=conv.get("meeting_date", ""),
-        )]
+        [
+            TopicConversation(
+                id=conv["id"],
+                title=conv.get("title", ""),
+                meeting_date=conv.get("meeting_date", ""),
+            )
+        ]
         if conv
         else []
     )
