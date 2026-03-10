@@ -16,7 +16,6 @@ import pytest
 
 from src.workers.extract import extract_from_conversation
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -58,8 +57,6 @@ def _make_full_db_mock(
 ) -> MagicMock:
     """Return a mock DB that simulates a full happy-path run."""
     db = MagicMock()
-
-    call_count = [0]
 
     def select_side_effect(*args: Any, **kwargs: Any) -> MagicMock:
         """Route select() calls by what table() was called with."""
@@ -195,27 +192,51 @@ class TestExtractNoSegments:
 class TestExtractHappyPath:
     def test_full_extraction_returns_correct_counts(self, eager_extract: Any) -> None:
         """Happy path: 2 topics, 1 commitment, 3 entities extracted and stored."""
-        from src.llm_client import CommitmentList, CommitmentResult, EntityList, EntityResult, TopicList, TopicResult
+        from src.llm_client import (
+            CommitmentList,
+            CommitmentResult,
+            EntityList,
+            EntityResult,
+            TopicList,
+            TopicResult,
+        )
 
         segments = [_make_segment("We discussed the Q3 roadmap.")]
 
-        mock_topics = TopicList(topics=[
-            TopicResult(label="Q3 Roadmap", summary="Discussed Q3 plans.", status="open", key_quotes=[]),
-            TopicResult(label="Budget", summary="Budget allocation reviewed.", status="resolved", key_quotes=[]),
-        ])
-        mock_commitments = CommitmentList(commitments=[
-            CommitmentResult(text="Send Q3 plan by Friday", owner="Alice", due_date=None, status="open"),
-        ])
-        mock_entities = EntityList(entities=[
-            EntityResult(name="Alice", type="person", mentions=3),
-            EntityResult(name="Q3 Roadmap", type="project", mentions=5),
-            EntityResult(name="Farz", type="product", mentions=2),
-        ])
+        mock_topics = TopicList(
+            topics=[
+                TopicResult(
+                    label="Q3 Roadmap", summary="Discussed Q3 plans.", status="open", key_quotes=[]
+                ),
+                TopicResult(
+                    label="Budget",
+                    summary="Budget allocation reviewed.",
+                    status="resolved",
+                    key_quotes=[],
+                ),
+            ]
+        )
+        mock_commitments = CommitmentList(
+            commitments=[
+                CommitmentResult(
+                    text="Send Q3 plan by Friday", owner="Alice", due_date=None, status="open"
+                ),
+            ]
+        )
+        mock_entities = EntityList(
+            entities=[
+                EntityResult(name="Alice", type="person", mentions=3),
+                EntityResult(name="Q3 Roadmap", type="project", mentions=5),
+                EntityResult(name="Farz", type="product", mentions=2),
+            ]
+        )
 
         with (
             patch("src.workers.extract.get_client") as mock_get_client,
             patch("src.workers.extract.llm_client.extract_topics", return_value=mock_topics),
-            patch("src.workers.extract.llm_client.extract_commitments", return_value=mock_commitments),
+            patch(
+                "src.workers.extract.llm_client.extract_commitments", return_value=mock_commitments
+            ),
             patch("src.workers.extract.llm_client.extract_entities", return_value=mock_entities),
         ):
             db = _make_full_db_mock(segments=segments)
@@ -248,9 +269,11 @@ class TestExtractHappyPath:
             m.execute.return_value.data = [{"id": str(uuid.uuid4())}]
             return m
 
-        mock_topics = TopicList(topics=[
-            TopicResult(label="Topic A", summary="Summary.", status="open", key_quotes=[]),
-        ])
+        mock_topics = TopicList(
+            topics=[
+                TopicResult(label="Topic A", summary="Summary.", status="open", key_quotes=[]),
+            ]
+        )
         mock_commitments = CommitmentList(commitments=[])
         mock_entities = EntityList(entities=[])
 
@@ -259,7 +282,9 @@ class TestExtractHappyPath:
         with (
             patch("src.workers.extract.get_client") as mock_get_client,
             patch("src.workers.extract.llm_client.extract_topics", return_value=mock_topics),
-            patch("src.workers.extract.llm_client.extract_commitments", return_value=mock_commitments),
+            patch(
+                "src.workers.extract.llm_client.extract_commitments", return_value=mock_commitments
+            ),
             patch("src.workers.extract.llm_client.extract_entities", return_value=mock_entities),
         ):
             db = _make_full_db_mock(segments=segments, user_id=expected_user_id)
@@ -284,6 +309,4 @@ class TestExtractHappyPath:
 
         for row in inserted_rows:
             if "user_id" in row:
-                assert row["user_id"] == expected_user_id, (
-                    f"Row inserted with wrong user_id: {row}"
-                )
+                assert row["user_id"] == expected_user_id, f"Row inserted with wrong user_id: {row}"

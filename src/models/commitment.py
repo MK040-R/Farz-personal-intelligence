@@ -14,9 +14,7 @@ class CommitmentBase(BaseModel):
     text: str = Field(description="Exact commitment text, as stated or closely paraphrased")
     owner: str = Field(description="Person who made the commitment")
     due_date: datetime.datetime | None = None
-    status: Literal["open", "resolved"] = Field(
-        default="open", description="open or resolved"
-    )
+    status: Literal["open", "resolved"] = Field(default="open", description="open or resolved")
     segment_ids: list[uuid.UUID] = Field(default_factory=list)
 
 

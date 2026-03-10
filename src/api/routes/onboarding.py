@@ -55,7 +55,7 @@ class ImportResponse(BaseModel):
 class JobStatus(BaseModel):
     job_id: str
     file_id: str | None = None
-    status: str   # pending | progress | success | failure
+    status: str  # pending | progress | success | failure
     detail: str | None = None
     result: dict[str, Any] | None = None
 
@@ -176,9 +176,7 @@ async def available_recordings(
         .execute()
     )
     imported_ids: set[str] = {
-        row["drive_file_id"]
-        for row in (imported_result.data or [])
-        if row.get("drive_file_id")
+        row["drive_file_id"] for row in (imported_result.data or []) if row.get("drive_file_id")
     }
 
     return [
@@ -237,7 +235,11 @@ async def start_import(
             await refresh_access_token(refresh_token), lookback_days=120
         )
     except Exception as exc:
-        logger.error("Drive listing failed during import for user=%s: %s", user_id, type(exc).__name__)
+        logger.error(
+            "Drive listing failed during import for user=%s: %s",
+            user_id,
+            type(exc).__name__,
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Failed to retrieve file metadata from Google Drive.",

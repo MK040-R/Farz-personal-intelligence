@@ -14,8 +14,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from src.main import app
 from src.api.deps import get_current_user
+from src.main import app
 
 client = TestClient(app)
 
@@ -77,7 +77,9 @@ def _make_list_db(topics: list, conversations: list) -> MagicMock:
 def _make_detail_db(topic: list, conversation: list) -> MagicMock:
     """Mock DB for GET /topics/{id}."""
     mock_topics = MagicMock()
-    mock_topics.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = topic
+    mock_topics.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = (
+        topic
+    )
 
     mock_conversations = MagicMock()
     mock_conversations.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = conversation

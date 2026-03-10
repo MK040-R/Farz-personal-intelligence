@@ -16,7 +16,6 @@ import pytest
 
 from src.workers.ingest import _transcribe_bytes, ingest_recording
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -28,9 +27,7 @@ def _make_db_mock(existing_drive_file: bool = False) -> MagicMock:
 
     # conversations.select — used for idempotency check
     existing_data = [{"id": str(uuid.uuid4())}] if existing_drive_file else []
-    db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = (
-        existing_data
-    )
+    db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = existing_data
 
     # conversations.insert — returns a new conversation row
     new_conv_id = str(uuid.uuid4())
@@ -58,9 +55,7 @@ class TestTranscribeBytes:
         mock_response.results.utterances = [mock_utt]
 
         with patch("src.workers.ingest.DeepgramClient") as mock_deepgram_cls:
-            mock_deepgram_cls.return_value.listen.rest.v.return_value.transcribe_file.return_value = (
-                mock_response
-            )
+            mock_deepgram_cls.return_value.listen.rest.v.return_value.transcribe_file.return_value = mock_response
             result = _transcribe_bytes(b"fake-audio-bytes")
 
         assert len(result) == 1
@@ -74,9 +69,7 @@ class TestTranscribeBytes:
         mock_response.results.utterances = []
 
         with patch("src.workers.ingest.DeepgramClient") as mock_deepgram_cls:
-            mock_deepgram_cls.return_value.listen.rest.v.return_value.transcribe_file.return_value = (
-                mock_response
-            )
+            mock_deepgram_cls.return_value.listen.rest.v.return_value.transcribe_file.return_value = mock_response
             result = _transcribe_bytes(b"silence")
 
         assert result == []
@@ -86,9 +79,7 @@ class TestTranscribeBytes:
         mock_response.results = None
 
         with patch("src.workers.ingest.DeepgramClient") as mock_deepgram_cls:
-            mock_deepgram_cls.return_value.listen.rest.v.return_value.transcribe_file.return_value = (
-                mock_response
-            )
+            mock_deepgram_cls.return_value.listen.rest.v.return_value.transcribe_file.return_value = mock_response
             result = _transcribe_bytes(b"audio")
 
         assert result == []
@@ -105,9 +96,7 @@ class TestTranscribeBytes:
         mock_response.results.utterances = [mock_utt]
 
         with patch("src.workers.ingest.DeepgramClient") as mock_deepgram_cls:
-            mock_deepgram_cls.return_value.listen.rest.v.return_value.transcribe_file.return_value = (
-                mock_response
-            )
+            mock_deepgram_cls.return_value.listen.rest.v.return_value.transcribe_file.return_value = mock_response
             result = _transcribe_bytes(b"audio")
 
         assert result[0]["start_ms"] == 10250
@@ -199,7 +188,9 @@ class TestIngestRecordingUnit:
             # No existing conversation
             db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
             # Insert conversation returns new ID
-            db.table.return_value.insert.return_value.execute.return_value.data = [{"id": new_conv_id}]
+            db.table.return_value.insert.return_value.execute.return_value.data = [
+                {"id": new_conv_id}
+            ]
             mock_get_client.return_value = db
 
             result = self._run_task(eager_ingest)
@@ -210,13 +201,14 @@ class TestIngestRecordingUnit:
 
     def test_audio_bytes_deleted_even_on_transcription_error(self, eager_ingest: Any) -> None:
         """gc.collect() is called even if transcription raises — audio is never retained."""
-        import gc
 
         with (
             patch("src.workers.ingest.get_client") as mock_get_client,
             patch("src.workers.ingest.refresh_access_token_sync", return_value="token"),
             patch("src.workers.ingest.download_recording_sync", return_value=b"audio"),
-            patch("src.workers.ingest._transcribe_bytes", side_effect=RuntimeError("Deepgram down")),
+            patch(
+                "src.workers.ingest._transcribe_bytes", side_effect=RuntimeError("Deepgram down")
+            ),
             patch("src.workers.ingest.gc.collect") as mock_gc,
         ):
             db = MagicMock()

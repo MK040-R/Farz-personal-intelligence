@@ -17,14 +17,13 @@ Rules:
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from celery import Celery
 
-from src import celeryconfig
+from src import celeryconfig, llm_client
 from src.database import get_client
-from src import llm_client
 
 logger = logging.getLogger(__name__)
 
@@ -82,9 +81,7 @@ def extract_from_conversation(
         .execute()
     )
     if not conv_result.data:
-        raise RuntimeError(
-            f"Conversation {conversation_id} not found for user {user_id}"
-        )
+        raise RuntimeError(f"Conversation {conversation_id} not found for user {user_id}")
 
     # --- Load transcript segments ---
     self.update_state(state="PROGRESS", meta={"status": "loading_segments"})
@@ -103,9 +100,7 @@ def extract_from_conversation(
             "No transcript segments found for conversation=%s — marking indexed anyway",
             conversation_id,
         )
-        db.table("conversations").update({"status": "indexed"}).eq(
-            "id", conversation_id
-        ).execute()
+        db.table("conversations").update({"status": "indexed"}).eq("id", conversation_id).execute()
         return {
             "conversation_id": conversation_id,
             "topic_count": 0,
@@ -114,9 +109,7 @@ def extract_from_conversation(
         }
 
     # Concatenate segments into a single transcript (never log this text)
-    transcript = "\n".join(
-        f"[{seg['speaker_id']}] {seg['text']}" for seg in segments
-    )
+    transcript = "\n".join(f"[{seg['speaker_id']}] {seg['text']}" for seg in segments)
     segment_ids = [seg["id"] for seg in segments]
 
     # --- AI extraction (3 independent calls) ---
@@ -140,23 +133,27 @@ def extract_from_conversation(
 
     for topic in topic_list.topics:
         topic_id = str(uuid.uuid4())
-        db.table("topics").insert({
-            "id": topic_id,
-            "user_id": user_id,
-            "conversation_id": conversation_id,
-            "label": topic.label,
-            "summary": topic.summary,
-            "status": topic.status,
-            "key_quotes": topic.key_quotes,
-        }).execute()
+        db.table("topics").insert(
+            {
+                "id": topic_id,
+                "user_id": user_id,
+                "conversation_id": conversation_id,
+                "label": topic.label,
+                "summary": topic.summary,
+                "status": topic.status,
+                "key_quotes": topic.key_quotes,
+            }
+        ).execute()
         topic_ids.append(topic_id)
 
         # Link topic → all segments (simple: link to all, since topics span the conversation)
         if segment_ids:
-            db.table("topic_segment_links").insert([
-                {"user_id": user_id, "topic_id": topic_id, "segment_id": seg_id}
-                for seg_id in segment_ids
-            ]).execute()
+            db.table("topic_segment_links").insert(
+                [
+                    {"user_id": user_id, "topic_id": topic_id, "segment_id": seg_id}
+                    for seg_id in segment_ids
+                ]
+            ).execute()
 
     # --- Persist Commitments ---
     self.update_state(state="PROGRESS", meta={"status": "saving_commitments"})
@@ -172,48 +169,54 @@ def extract_from_conversation(
             except ValueError:
                 due_date = None
 
-        db.table("commitments").insert({
-            "id": commitment_id,
-            "user_id": user_id,
-            "conversation_id": conversation_id,
-            "text": commitment.text,
-            "owner": commitment.owner,
-            "due_date": due_date,
-            "status": commitment.status,
-        }).execute()
+        db.table("commitments").insert(
+            {
+                "id": commitment_id,
+                "user_id": user_id,
+                "conversation_id": conversation_id,
+                "text": commitment.text,
+                "owner": commitment.owner,
+                "due_date": due_date,
+                "status": commitment.status,
+            }
+        ).execute()
 
         # Link commitment → all segments
         if segment_ids:
-            db.table("commitment_segment_links").insert([
-                {"user_id": user_id, "commitment_id": commitment_id, "segment_id": seg_id}
-                for seg_id in segment_ids
-            ]).execute()
+            db.table("commitment_segment_links").insert(
+                [
+                    {"user_id": user_id, "commitment_id": commitment_id, "segment_id": seg_id}
+                    for seg_id in segment_ids
+                ]
+            ).execute()
 
     # --- Persist Entities ---
     self.update_state(state="PROGRESS", meta={"status": "saving_entities"})
 
     for entity in entity_list.entities:
         entity_id = str(uuid.uuid4())
-        db.table("entities").insert({
-            "id": entity_id,
-            "user_id": user_id,
-            "conversation_id": conversation_id,
-            "name": entity.name,
-            "type": entity.type,
-            "mentions": entity.mentions,
-        }).execute()
+        db.table("entities").insert(
+            {
+                "id": entity_id,
+                "user_id": user_id,
+                "conversation_id": conversation_id,
+                "name": entity.name,
+                "type": entity.type,
+                "mentions": entity.mentions,
+            }
+        ).execute()
 
         # Link entity → all segments
         if segment_ids:
-            db.table("entity_segment_links").insert([
-                {"user_id": user_id, "entity_id": entity_id, "segment_id": seg_id}
-                for seg_id in segment_ids
-            ]).execute()
+            db.table("entity_segment_links").insert(
+                [
+                    {"user_id": user_id, "entity_id": entity_id, "segment_id": seg_id}
+                    for seg_id in segment_ids
+                ]
+            ).execute()
 
     # --- Mark conversation as indexed ---
-    db.table("conversations").update({"status": "indexed"}).eq(
-        "id", conversation_id
-    ).execute()
+    db.table("conversations").update({"status": "indexed"}).eq("id", conversation_id).execute()
 
     # --- Update user_index counts ---
     existing_index = (
@@ -224,11 +227,13 @@ def extract_from_conversation(
     )
     if existing_index.data:
         current = existing_index.data[0]
-        db.table("user_index").update({
-            "topic_count": current["topic_count"] + len(topic_list.topics),
-            "commitment_count": current["commitment_count"] + len(commitment_list.commitments),
-            "last_updated": datetime.now(tz=timezone.utc).isoformat(),
-        }).eq("user_id", user_id).execute()
+        db.table("user_index").update(
+            {
+                "topic_count": current["topic_count"] + len(topic_list.topics),
+                "commitment_count": current["commitment_count"] + len(commitment_list.commitments),
+                "last_updated": datetime.now(tz=UTC).isoformat(),
+            }
+        ).eq("user_id", user_id).execute()
 
     logger.info(
         "Extraction persisted — conversation=%s topics=%d commitments=%d entities=%d user=%s",

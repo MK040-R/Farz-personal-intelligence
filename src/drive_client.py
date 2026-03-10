@@ -11,7 +11,7 @@ Sync functions are used inside Celery tasks.
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -111,12 +111,10 @@ async def list_meet_recordings(
         PermissionError: If the token is invalid or expired.
         httpx.HTTPStatusError: On other HTTP errors.
     """
-    since = datetime.now(tz=timezone.utc) - timedelta(days=lookback_days)
+    since = datetime.now(tz=UTC) - timedelta(days=lookback_days)
     since_str = since.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    mime_clause = " or ".join(
-        f"mimeType='{mt}'" for mt in _RECORDING_MIME_TYPES
-    )
+    mime_clause = " or ".join(f"mimeType='{mt}'" for mt in _RECORDING_MIME_TYPES)
     query = f"({mime_clause}) and createdTime >= '{since_str}' and trashed = false"
 
     params = {
@@ -145,9 +143,7 @@ async def list_meet_recordings(
                 DriveRecording(
                     file_id=f["id"],
                     name=f["name"],
-                    created_time=datetime.fromisoformat(
-                        f["createdTime"].replace("Z", "+00:00")
-                    ),
+                    created_time=datetime.fromisoformat(f["createdTime"].replace("Z", "+00:00")),
                     size_bytes=int(f["size"]) if f.get("size") else None,
                     mime_type=f["mimeType"],
                 )
@@ -155,7 +151,11 @@ async def list_meet_recordings(
         except (KeyError, ValueError) as exc:
             logger.warning("Skipping malformed Drive file entry: %s", exc)
 
-    logger.debug("Drive listing: %d recordings found (lookback=%d days)", len(recordings), lookback_days)
+    logger.debug(
+        "Drive listing: %d recordings found (lookback=%d days)",
+        len(recordings),
+        lookback_days,
+    )
     return recordings
 
 

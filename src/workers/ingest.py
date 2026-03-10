@@ -19,7 +19,7 @@ Rules:
 import gc
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from celery import Celery
@@ -29,8 +29,8 @@ from src import celeryconfig
 from src.config import settings
 from src.database import get_client
 from src.drive_client import download_recording_sync, refresh_access_token_sync
-from src.workers.extract import extract_from_conversation
 from src.workers.embed import embed_conversation
+from src.workers.extract import extract_from_conversation
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +115,8 @@ def ingest_recording(
     Raises:
         ValueError: If any required argument is empty.
     """
-    if not all([drive_file_id, file_name, created_time_iso, user_id, user_jwt, google_refresh_token]):
+    required = [drive_file_id, file_name, created_time_iso, user_id, user_jwt, google_refresh_token]
+    if not all(required):
         raise ValueError("All arguments to ingest_recording are required")
 
     logger.info("Ingest started — file_id=%s user=%s", drive_file_id, user_id)
@@ -163,7 +164,7 @@ def ingest_recording(
     try:
         meeting_date = datetime.fromisoformat(created_time_iso)
     except ValueError:
-        meeting_date = datetime.now(tz=timezone.utc)
+        meeting_date = datetime.now(tz=UTC)
 
     # Duration from last utterance end time
     duration_seconds: int | None = None
@@ -199,9 +200,9 @@ def ingest_recording(
         db.table("transcript_segments").insert(segments).execute()
 
     # --- Step 6: Update user_index last_updated ---
-    db.table("user_index").update(
-        {"last_updated": datetime.now(tz=timezone.utc).isoformat()}
-    ).eq("user_id", user_id).execute()
+    db.table("user_index").update({"last_updated": datetime.now(tz=UTC).isoformat()}).eq(
+        "user_id", user_id
+    ).execute()
 
     logger.info(
         "Ingest complete — conversation=%s segments=%d user=%s",

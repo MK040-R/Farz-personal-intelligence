@@ -59,10 +59,7 @@ def get_index_stats(
 
     # entity_count is not stored in user_index — compute it live
     entity_result = (
-        db.table("entities")
-        .select("id", count="exact")
-        .eq("user_id", user_id)
-        .execute()
+        db.table("entities").select("id", count="exact").eq("user_id", user_id).execute()
     )
     entity_count = entity_result.count or 0
 
