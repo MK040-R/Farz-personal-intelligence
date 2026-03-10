@@ -57,7 +57,7 @@ services:
         sync: false   # set to your Vercel URL e.g. https://farz.vercel.app
 
   # ---------------------------------------------------------------------------
-  # Celery worker — ingest (Drive download + Deepgram transcription)
+  # Celery worker — ingest (Google Meet transcript export + parse)
   # ---------------------------------------------------------------------------
   - type: worker
     name: farz-worker-ingest

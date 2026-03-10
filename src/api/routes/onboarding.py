@@ -1,9 +1,9 @@
 """
-Onboarding routes — Google Drive recording import flow.
+Onboarding routes — Google Meet transcript import flow.
 
 Endpoints:
-  GET  /onboarding/available-recordings      — lists Drive recordings not yet imported
-  POST /onboarding/import                    — starts ingest jobs for selected recordings
+  GET  /onboarding/available-recordings      — lists Drive transcripts not yet imported
+  POST /onboarding/import                    — starts ingest jobs for selected transcripts
   GET  /onboarding/import/status             — aggregate status across all active jobs
   GET  /onboarding/import/status/{job_id}    — polls the status of a single ingest job
 """
@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 from src.api.deps import get_current_user
 from src.database import get_client
-from src.drive_client import DriveRecording, list_meet_recordings, refresh_access_token
+from src.drive_client import DriveTranscript, list_meet_transcripts, refresh_access_token
 from src.workers.ingest import celery_app, ingest_recording
 
 logger = logging.getLogger(__name__)
@@ -35,9 +35,7 @@ class AvailableRecording(BaseModel):
     name: str
     created_time: str  # ISO-8601
     size_bytes: int | None
-    mime_type: str
     already_imported: bool
-    is_transcript: bool = False
 
 
 class ImportRequest(BaseModel):
@@ -115,16 +113,14 @@ def _get_google_tokens(db: Any, user_id: str) -> tuple[str, str]:
 @router.get(
     "/available-recordings",
     response_model=list[AvailableRecording],
-    summary="List Drive recordings available to import",
+    summary="List Google Meet transcripts available to import",
 )
 async def available_recordings(
     lookback_days: int = 365,
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> list[AvailableRecording]:
-    """Return Google Drive video files from the last lookback_days, annotated
-    with whether each has already been imported into Farz.
-
-    The client should call this first to show the user what's available.
+    """Return Google Meet transcript documents from the last lookback_days,
+    annotated with whether each has already been imported into Farz.
     """
     user_id: str = current_user["sub"]
     raw_jwt: str = current_user["_raw_jwt"]
@@ -132,7 +128,6 @@ async def available_recordings(
 
     access_token, refresh_token = _get_google_tokens(db, user_id)
 
-    # Refresh the access token — it may have expired since last login
     try:
         access_token = await refresh_access_token(refresh_token)
     except Exception as exc:
@@ -142,14 +137,12 @@ async def available_recordings(
             detail="Failed to refresh Google access. Please sign in again.",
         ) from exc
 
-    # Also store the refreshed access token for subsequent calls
     db.table("user_index").update({"google_access_token": access_token}).eq(
         "user_id", user_id
     ).execute()
 
-    # Fetch Drive recordings
     try:
-        drive_recordings: list[DriveRecording] = await list_meet_recordings(
+        transcripts: list[DriveTranscript] = await list_meet_transcripts(
             access_token, lookback_days=lookback_days
         )
     except PermissionError as exc:
@@ -161,14 +154,13 @@ async def available_recordings(
         logger.error("Drive listing failed for user=%s: %s", user_id, type(exc).__name__)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Failed to retrieve recordings from Google Drive.",
+            detail="Failed to retrieve transcripts from Google Drive.",
         ) from exc
 
-    if not drive_recordings:
+    if not transcripts:
         return []
 
-    # Check which Drive file IDs are already imported
-    drive_ids = [r.file_id for r in drive_recordings]
+    drive_ids = [t.file_id for t in transcripts]
     imported_result = (
         db.table("conversations")
         .select("drive_file_id")
@@ -182,15 +174,13 @@ async def available_recordings(
 
     return [
         AvailableRecording(
-            file_id=r.file_id,
-            name=r.name,
-            created_time=r.created_time.isoformat(),
-            size_bytes=r.size_bytes,
-            mime_type=r.mime_type,
-            already_imported=r.file_id in imported_ids,
-            is_transcript=r.is_transcript,
+            file_id=t.file_id,
+            name=t.name,
+            created_time=t.created_time.isoformat(),
+            size_bytes=t.size_bytes,
+            already_imported=t.file_id in imported_ids,
         )
-        for r in drive_recordings
+        for t in transcripts
     ]
 
 
@@ -203,7 +193,7 @@ async def available_recordings(
     "/import",
     response_model=ImportResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Start ingest jobs for selected Drive recordings",
+    summary="Start ingest jobs for selected transcript documents",
 )
 async def start_import(
     body: ImportRequest,
@@ -222,7 +212,7 @@ async def start_import(
     if len(body.file_ids) > 20:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Maximum 20 recordings per import batch",
+            detail="Maximum 20 transcripts per import batch",
         )
 
     user_id: str = current_user["sub"]
@@ -231,10 +221,9 @@ async def start_import(
 
     _, refresh_token = _get_google_tokens(db, user_id)
 
-    # Fetch Drive metadata for the requested files in one call
     try:
-        all_drive = await list_meet_recordings(
-            await refresh_access_token(refresh_token), lookback_days=120
+        all_transcripts = await list_meet_transcripts(
+            await refresh_access_token(refresh_token), lookback_days=365
         )
     except Exception as exc:
         logger.error(
@@ -244,23 +233,22 @@ async def start_import(
         )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Failed to retrieve file metadata from Google Drive.",
+            detail="Failed to retrieve transcript metadata from Google Drive.",
         ) from exc
 
-    drive_by_id = {r.file_id: r for r in all_drive}
+    transcript_by_id = {t.file_id: t for t in all_transcripts}
 
     jobs: list[ImportJob] = []
     for file_id in body.file_ids:
-        recording = drive_by_id.get(file_id)
-        if recording is None:
+        transcript = transcript_by_id.get(file_id)
+        if transcript is None:
             logger.warning("File %s not found in Drive for user=%s — skipping", file_id, user_id)
             continue
 
         task = ingest_recording.delay(
-            drive_file_id=recording.file_id,
-            file_name=recording.name,
-            created_time_iso=recording.created_time.isoformat(),
-            mime_type=recording.mime_type,
+            drive_file_id=transcript.file_id,
+            file_name=transcript.name,
+            created_time_iso=transcript.created_time.isoformat(),
             user_id=user_id,
             user_jwt=raw_jwt,
             google_refresh_token=refresh_token,

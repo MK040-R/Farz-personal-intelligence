@@ -1,8 +1,8 @@
 """
 tests/test_ingest.py — Unit tests for the ingest_recording Celery task.
 
-All tests use pytest-mock to patch external services (Google Drive, Deepgram,
-Supabase). No network calls, no credentials needed.
+All tests use unittest.mock to patch external services (Google Drive, Supabase).
+No network calls, no credentials needed.
 
 Run:
     pytest tests/test_ingest.py -v -m unit
@@ -14,93 +14,94 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.workers.ingest import _transcribe_bytes, ingest_recording
+from src.workers.ingest import _parse_google_transcript, ingest_recording
 
 # ---------------------------------------------------------------------------
-# Helpers
+# _parse_google_transcript unit tests
 # ---------------------------------------------------------------------------
 
+_SAMPLE_TRANSCRIPT = """\
+Alice
+00:00
+Hello everyone, welcome to the meeting.
 
-def _make_db_mock(existing_drive_file: bool = False) -> MagicMock:
-    """Return a mock Supabase client that simulates the DB responses."""
-    db = MagicMock()
+Bob
+00:15
+Thanks for joining us today.
 
-    # conversations.select — used for idempotency check
-    existing_data = [{"id": str(uuid.uuid4())}] if existing_drive_file else []
-    db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = existing_data
-
-    # conversations.insert — returns a new conversation row
-    new_conv_id = str(uuid.uuid4())
-    db.table.return_value.insert.return_value.execute.return_value.data = [{"id": new_conv_id}]
-
-    return db, new_conv_id
-
-
-# ---------------------------------------------------------------------------
-# _transcribe_bytes unit tests
-# ---------------------------------------------------------------------------
+Alice
+00:30
+Let's go through the agenda.
+"""
 
 
 @pytest.mark.unit
-class TestTranscribeBytes:
-    def test_returns_utterance_list(self) -> None:
-        """_transcribe_bytes should return a list of utterance dicts."""
-        mock_utt = MagicMock()
-        mock_utt.speaker = 0
-        mock_utt.start = 0.0
-        mock_utt.end = 5.5
-        mock_utt.transcript = "Hello from speaker zero."
+class TestParseGoogleTranscript:
+    def test_parses_basic_transcript(self) -> None:
+        segments = _parse_google_transcript(_SAMPLE_TRANSCRIPT)
+        assert len(segments) == 3
+        assert segments[0]["speaker_id"] == "Alice"
+        assert segments[1]["speaker_id"] == "Bob"
+        assert segments[2]["speaker_id"] == "Alice"
 
-        mock_response = MagicMock()
-        mock_response.results.utterances = [mock_utt]
+    def test_parses_timestamps_to_ms(self) -> None:
+        segments = _parse_google_transcript(_SAMPLE_TRANSCRIPT)
+        assert segments[0]["start_ms"] == 0
+        assert segments[1]["start_ms"] == 15_000
+        assert segments[2]["start_ms"] == 30_000
 
-        with patch("src.workers.ingest.DeepgramClient") as mock_deepgram_cls:
-            mock_deepgram_cls.return_value.listen.rest.v.return_value.transcribe_file.return_value = mock_response
-            result = _transcribe_bytes(b"fake-audio-bytes")
+    def test_text_content_preserved(self) -> None:
+        segments = _parse_google_transcript(_SAMPLE_TRANSCRIPT)
+        assert "Hello everyone" in segments[0]["text"]
+        assert "Thanks for joining" in segments[1]["text"]
+        assert "agenda" in segments[2]["text"]
 
-        assert len(result) == 1
-        assert result[0]["speaker_id"] == "speaker_0"
-        assert result[0]["start_ms"] == 0
-        assert result[0]["end_ms"] == 5500
-        assert result[0]["text"] == "Hello from speaker zero."
+    def test_end_ms_backfilled_from_next_segment(self) -> None:
+        segments = _parse_google_transcript(_SAMPLE_TRANSCRIPT)
+        # First segment end_ms should equal second segment start_ms
+        assert segments[0]["end_ms"] == segments[1]["start_ms"]
+        assert segments[1]["end_ms"] == segments[2]["start_ms"]
 
-    def test_returns_empty_list_when_no_utterances(self) -> None:
-        mock_response = MagicMock()
-        mock_response.results.utterances = []
+    def test_last_segment_end_ms_estimated_from_word_count(self) -> None:
+        segments = _parse_google_transcript(_SAMPLE_TRANSCRIPT)
+        # Last segment has no next — estimated from word count
+        last = segments[-1]
+        assert last["end_ms"] > last["start_ms"]
 
-        with patch("src.workers.ingest.DeepgramClient") as mock_deepgram_cls:
-            mock_deepgram_cls.return_value.listen.rest.v.return_value.transcribe_file.return_value = mock_response
-            result = _transcribe_bytes(b"silence")
+    def test_empty_input_returns_empty_list(self) -> None:
+        assert _parse_google_transcript("") == []
 
-        assert result == []
+    def test_hh_mm_ss_timestamp_parsed(self) -> None:
+        text = "Alice\n01:02:03\nSomething was said.\n"
+        segments = _parse_google_transcript(text)
+        assert len(segments) == 1
+        expected_ms = (1 * 3600 + 2 * 60 + 3) * 1000
+        assert segments[0]["start_ms"] == expected_ms
 
-    def test_returns_empty_list_when_results_none(self) -> None:
-        mock_response = MagicMock()
-        mock_response.results = None
+    def test_block_without_timestamp_gets_estimated_start(self) -> None:
+        text = "Alice\nHello world this is my segment.\n"
+        segments = _parse_google_transcript(text)
+        assert len(segments) == 1
+        assert segments[0]["start_ms"] == 0  # cursor starts at 0
 
-        with patch("src.workers.ingest.DeepgramClient") as mock_deepgram_cls:
-            mock_deepgram_cls.return_value.listen.rest.v.return_value.transcribe_file.return_value = mock_response
-            result = _transcribe_bytes(b"audio")
+    def test_minimum_end_ms_duration(self) -> None:
+        """Even a single-word segment must have end_ms > start_ms."""
+        text = "Alice\n00:00\nHi.\n"
+        segments = _parse_google_transcript(text)
+        assert segments[0]["end_ms"] > segments[0]["start_ms"]
 
-        assert result == []
+    def test_crlf_line_endings_normalised(self) -> None:
+        text = "Alice\r\n00:00\r\nHello world.\r\n\r\nBob\r\n00:10\r\nHi there.\r\n"
+        segments = _parse_google_transcript(text)
+        assert len(segments) == 2
 
-    def test_millisecond_conversion(self) -> None:
-        """Start/end seconds from Deepgram should be converted to milliseconds."""
-        mock_utt = MagicMock()
-        mock_utt.speaker = 1
-        mock_utt.start = 10.25
-        mock_utt.end = 45.75
-        mock_utt.transcript = "Some content."
-
-        mock_response = MagicMock()
-        mock_response.results.utterances = [mock_utt]
-
-        with patch("src.workers.ingest.DeepgramClient") as mock_deepgram_cls:
-            mock_deepgram_cls.return_value.listen.rest.v.return_value.transcribe_file.return_value = mock_response
-            result = _transcribe_bytes(b"audio")
-
-        assert result[0]["start_ms"] == 10250
-        assert result[0]["end_ms"] == 45750
+    def test_all_segments_have_required_keys(self) -> None:
+        segments = _parse_google_transcript(_SAMPLE_TRANSCRIPT)
+        for seg in segments:
+            assert "speaker_id" in seg
+            assert "start_ms" in seg
+            assert "end_ms" in seg
+            assert "text" in seg
 
 
 # ---------------------------------------------------------------------------
@@ -114,9 +115,8 @@ class TestIngestRecordingUnit:
         self,
         eager_ingest: Any,
         drive_file_id: str = "file-abc",
-        file_name: str = "Recording 2025-03-01.mp4",
+        file_name: str = "Meeting 2025-03-01",
         created_time_iso: str = "2025-03-01T10:00:00+00:00",
-        mime_type: str = "video/mp4",
         user_id: str = "user-123",
         user_jwt: str = "jwt-token",
         google_refresh_token: str = "refresh-token",
@@ -125,7 +125,6 @@ class TestIngestRecordingUnit:
             drive_file_id=drive_file_id,
             file_name=file_name,
             created_time_iso=created_time_iso,
-            mime_type=mime_type,
             user_id=user_id,
             user_jwt=user_jwt,
             google_refresh_token=google_refresh_token,
@@ -154,7 +153,6 @@ class TestIngestRecordingUnit:
             patch("src.workers.ingest.refresh_access_token_sync", return_value="new-token"),
         ):
             db = MagicMock()
-            # Simulate: conversation with this drive_file_id already exists
             existing_id = str(uuid.uuid4())
             db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
                 {"id": existing_id}
@@ -168,26 +166,22 @@ class TestIngestRecordingUnit:
         assert result["segment_count"] == 0
 
     def test_full_ingest_creates_conversation_and_segments(self, eager_ingest: Any) -> None:
-        """Happy path: download → transcribe → save → return conversation_id."""
+        """Happy path: export transcript → parse → save → return conversation_id."""
         new_conv_id = str(uuid.uuid4())
+        transcript_text = (
+            "Alice\n00:00\nHello everyone welcome to the meeting.\n\n"
+            "Bob\n00:15\nThanks for joining us today.\n"
+        )
 
         with (
             patch("src.workers.ingest.get_client") as mock_get_client,
             patch("src.workers.ingest.refresh_access_token_sync", return_value="access-token"),
-            patch("src.workers.ingest.download_recording_sync", return_value=b"audio-bytes"),
-            patch("src.workers.ingest._transcribe_bytes") as mock_transcribe,
+            patch("src.workers.ingest.export_transcript_sync", return_value=transcript_text),
             patch("src.workers.ingest.extract_from_conversation.delay"),
             patch("src.workers.ingest.embed_conversation.delay"),
         ):
-            mock_transcribe.return_value = [
-                {"speaker_id": "speaker_0", "start_ms": 0, "end_ms": 5000, "text": "Hello."},
-                {"speaker_id": "speaker_1", "start_ms": 5100, "end_ms": 10000, "text": "Hi there."},
-            ]
-
             db = MagicMock()
-            # No existing conversation
             db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
-            # Insert conversation returns new ID
             db.table.return_value.insert.return_value.execute.return_value.data = [
                 {"id": new_conv_id}
             ]
@@ -199,31 +193,52 @@ class TestIngestRecordingUnit:
         assert result["conversation_id"] == new_conv_id
         assert result["segment_count"] == 2
 
-    def test_audio_bytes_deleted_even_on_transcription_error(self, eager_ingest: Any) -> None:
-        """gc.collect() is called even if transcription raises — audio is never retained."""
+    def test_ingest_chains_extract_and_embed(self, eager_ingest: Any) -> None:
+        """After a successful ingest, extract and embed tasks must be queued."""
+        new_conv_id = str(uuid.uuid4())
+        transcript_text = "Alice\n00:00\nHello.\n"
 
         with (
             patch("src.workers.ingest.get_client") as mock_get_client,
             patch("src.workers.ingest.refresh_access_token_sync", return_value="token"),
-            patch("src.workers.ingest.download_recording_sync", return_value=b"audio"),
+            patch("src.workers.ingest.export_transcript_sync", return_value=transcript_text),
+            patch("src.workers.ingest.extract_from_conversation.delay") as mock_extract,
+            patch("src.workers.ingest.embed_conversation.delay") as mock_embed,
+        ):
+            db = MagicMock()
+            db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+            db.table.return_value.insert.return_value.execute.return_value.data = [
+                {"id": new_conv_id}
+            ]
+            mock_get_client.return_value = db
+
+            self._run_task(eager_ingest)
+
+        mock_extract.assert_called_once()
+        mock_embed.assert_called_once()
+
+    def test_export_error_propagates(self, eager_ingest: Any) -> None:
+        """If export_transcript_sync raises, the task should propagate the error."""
+        with (
+            patch("src.workers.ingest.get_client") as mock_get_client,
+            patch("src.workers.ingest.refresh_access_token_sync", return_value="token"),
             patch(
-                "src.workers.ingest._transcribe_bytes", side_effect=RuntimeError("Deepgram down")
+                "src.workers.ingest.export_transcript_sync",
+                side_effect=RuntimeError("Drive API down"),
             ),
-            patch("src.workers.ingest.gc.collect") as mock_gc,
         ):
             db = MagicMock()
             db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
             mock_get_client.return_value = db
 
-            with pytest.raises(RuntimeError, match="Deepgram down"):
+            with pytest.raises(RuntimeError, match="Drive API down"):
                 self._run_task(eager_ingest)
-
-        mock_gc.assert_called()
 
     def test_user_id_isolation_in_conversation_insert(self, eager_ingest: Any) -> None:
         """The user_id passed to the task must appear in the inserted conversation row."""
         expected_user_id = "user-isolation-test"
         inserted_rows: list[dict] = []
+        transcript_text = "Alice\n00:00\nHello world.\n"
 
         def capture_insert(data: Any) -> Any:
             if isinstance(data, dict):
@@ -237,8 +252,7 @@ class TestIngestRecordingUnit:
         with (
             patch("src.workers.ingest.get_client") as mock_get_client,
             patch("src.workers.ingest.refresh_access_token_sync", return_value="token"),
-            patch("src.workers.ingest.download_recording_sync", return_value=b"audio"),
-            patch("src.workers.ingest._transcribe_bytes", return_value=[]),
+            patch("src.workers.ingest.export_transcript_sync", return_value=transcript_text),
             patch("src.workers.ingest.extract_from_conversation.delay"),
             patch("src.workers.ingest.embed_conversation.delay"),
         ):
@@ -249,5 +263,50 @@ class TestIngestRecordingUnit:
 
             self._run_task(eager_ingest, user_id=expected_user_id)
 
-        # The conversation insert should carry the correct user_id
         assert any(row.get("user_id") == expected_user_id for row in inserted_rows)
+
+    def test_empty_transcript_saves_zero_segments(self, eager_ingest: Any) -> None:
+        """A transcript with no parseable content creates a conversation with 0 segments."""
+        new_conv_id = str(uuid.uuid4())
+
+        with (
+            patch("src.workers.ingest.get_client") as mock_get_client,
+            patch("src.workers.ingest.refresh_access_token_sync", return_value="token"),
+            patch("src.workers.ingest.export_transcript_sync", return_value=""),
+            patch("src.workers.ingest.extract_from_conversation.delay"),
+            patch("src.workers.ingest.embed_conversation.delay"),
+        ):
+            db = MagicMock()
+            db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+            db.table.return_value.insert.return_value.execute.return_value.data = [
+                {"id": new_conv_id}
+            ]
+            mock_get_client.return_value = db
+
+            result = self._run_task(eager_ingest)
+
+        assert result["segment_count"] == 0
+        assert result["already_existed"] is False
+
+    def test_result_includes_drive_file_id(self, eager_ingest: Any) -> None:
+        """Result dict must include drive_file_id for the caller to correlate jobs."""
+        file_id = "drive-file-xyz"
+        transcript_text = "Alice\n00:00\nHello.\n"
+
+        with (
+            patch("src.workers.ingest.get_client") as mock_get_client,
+            patch("src.workers.ingest.refresh_access_token_sync", return_value="token"),
+            patch("src.workers.ingest.export_transcript_sync", return_value=transcript_text),
+            patch("src.workers.ingest.extract_from_conversation.delay"),
+            patch("src.workers.ingest.embed_conversation.delay"),
+        ):
+            db = MagicMock()
+            db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+            db.table.return_value.insert.return_value.execute.return_value.data = [
+                {"id": str(uuid.uuid4())}
+            ]
+            mock_get_client.return_value = db
+
+            result = self._run_task(eager_ingest, drive_file_id=file_id)
+
+        assert result["drive_file_id"] == file_id

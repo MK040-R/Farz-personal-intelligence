@@ -1,10 +1,11 @@
 """
-Google Drive client — lists Meet recordings (transcripts + video) and exports text.
+Google Drive client — lists and exports Google Meet transcript documents.
 
-Google Meet saves two things to the "Meet Recordings" folder:
-  1. Transcript Google Docs (application/vnd.google-apps.document) — always present when
-     transcription is enabled. These are preferred: no Deepgram cost, instant processing.
-  2. Video files (video/mp4) — only present when recording is enabled.
+Google Meet saves a transcript Google Doc to the "Meet Recordings" folder in Drive
+whenever transcription is enabled for a meeting. This module lists those docs and
+exports their plain text content for the ingest pipeline.
+
+No audio or video files are involved at any point.
 
 Rules enforced here:
 - Transcript text is returned to the caller in memory and never written to disk.
@@ -28,18 +29,14 @@ logger = logging.getLogger(__name__)
 _DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files"
 _TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"  # noqa: S105
 
-# Supported MIME types — Google Docs transcripts are preferred over video files.
 _TRANSCRIPT_MIME_TYPE = "application/vnd.google-apps.document"
-_RECORDING_MIME_TYPES = ("video/mp4", "video/webm", "video/quicktime")
 
 
-class DriveRecording(BaseModel):
+class DriveTranscript(BaseModel):
     file_id: str
     name: str
     created_time: datetime
     size_bytes: int | None = None
-    mime_type: str
-    is_transcript: bool = False  # True for Google Doc transcripts, False for video files
 
 
 # ---------------------------------------------------------------------------
@@ -102,11 +99,15 @@ async def _get_meet_folder_ids(
 ) -> list[str]:
     """Return the Drive folder IDs for all folders named 'Meet Recordings'.
 
-    Google Meet automatically saves recordings to a folder with this name.
-    Returns an empty list if no such folder exists (user has no recordings yet).
+    Google Meet automatically saves transcripts to a folder with this name.
+    Returns an empty list if no such folder exists yet.
     """
+    meet_folder_query = (
+        "mimeType='application/vnd.google-apps.folder'"
+        " and name='Meet Recordings' and trashed=false"
+    )
     params = {
-        "q": "mimeType='application/vnd.google-apps.folder' and name='Meet Recordings' and trashed=false",
+        "q": meet_folder_query,
         "fields": "files(id)",
         "pageSize": "10",
     }
@@ -121,22 +122,21 @@ async def _get_meet_folder_ids(
     return [f["id"] for f in response.json().get("files", [])]
 
 
-async def list_meet_recordings(
+async def list_meet_transcripts(
     access_token: str,
     lookback_days: int = 365,
-) -> list[DriveRecording]:
-    """List Google Meet recording files from Drive created in the last lookback_days.
+) -> list[DriveTranscript]:
+    """List Google Meet transcript documents from Drive created in the last lookback_days.
 
-    Searches only inside 'Meet Recordings' folders (where Google Meet saves all
-    recordings automatically). Falls back to a name-based filter if no such
-    folder exists. Results are ordered newest-first, capped at 100 files.
+    Searches only inside 'Meet Recordings' folders for Google Doc files (the transcript
+    documents that Google Meet saves automatically when transcription is enabled).
 
     Args:
         access_token: A valid Google access token with drive.readonly scope.
-        lookback_days: How far back to look (default 60 days).
+        lookback_days: How far back to look (default 365 days).
 
     Returns:
-        List of DriveRecording objects. May be empty if none found.
+        List of DriveTranscript objects. Empty if none found.
 
     Raises:
         PermissionError: If the token is invalid or expired.
@@ -144,26 +144,30 @@ async def list_meet_recordings(
     """
     since = datetime.now(tz=UTC) - timedelta(days=lookback_days)
     since_str = since.strftime("%Y-%m-%dT%H:%M:%SZ")
-    mime_clause = " or ".join(f"mimeType='{mt}'" for mt in _RECORDING_MIME_TYPES)
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         folder_ids = await _get_meet_folder_ids(client, access_token)
 
-        # Include both Google Doc transcripts and video files
-        doc_mime = f"mimeType='{_TRANSCRIPT_MIME_TYPE}'"
-        all_mime_clause = f"({mime_clause} or {doc_mime})"
-
         if folder_ids:
-            # Restrict search to Meet Recordings folders
             parent_clause = " or ".join(f"'{fid}' in parents" for fid in folder_ids)
-            query = f"{all_mime_clause} and ({parent_clause}) and createdTime >= '{since_str}' and trashed=false"
+            query = (
+                f"mimeType='{_TRANSCRIPT_MIME_TYPE}'"
+                f" and ({parent_clause})"
+                f" and createdTime >= '{since_str}'"
+                f" and trashed=false"
+            )
         else:
             # No Meet Recordings folder yet — fall back to name pattern
-            query = f"{all_mime_clause} and name contains 'Meet' and createdTime >= '{since_str}' and trashed=false"
+            query = (
+                f"mimeType='{_TRANSCRIPT_MIME_TYPE}'"
+                f" and name contains 'Meet'"
+                f" and createdTime >= '{since_str}'"
+                f" and trashed=false"
+            )
 
         params = {
             "q": query,
-            "fields": "files(id,name,createdTime,size,mimeType)",
+            "fields": "files(id,name,createdTime,size)",
             "orderBy": "createdTime desc",
             "pageSize": "100",
         }
@@ -179,29 +183,27 @@ async def list_meet_recordings(
     response.raise_for_status()
 
     files: list[dict[str, Any]] = response.json().get("files", [])
-    recordings: list[DriveRecording] = []
+    transcripts: list[DriveTranscript] = []
     for f in files:
         try:
-            recordings.append(
-                DriveRecording(
+            transcripts.append(
+                DriveTranscript(
                     file_id=f["id"],
                     name=f["name"],
                     created_time=datetime.fromisoformat(f["createdTime"].replace("Z", "+00:00")),
                     size_bytes=int(f["size"]) if f.get("size") else None,
-                    mime_type=f["mimeType"],
-                    is_transcript=f["mimeType"] == _TRANSCRIPT_MIME_TYPE,
                 )
             )
         except (KeyError, ValueError) as exc:
             logger.warning("Skipping malformed Drive file entry: %s", exc)
 
     logger.debug(
-        "Drive listing: %d recordings found (lookback=%d days, folder_filter=%s)",
-        len(recordings),
+        "Drive listing: %d transcripts found (lookback=%d days, folder_filter=%s)",
+        len(transcripts),
         lookback_days,
         bool(folder_ids),
     )
-    return recordings
+    return transcripts
 
 
 # ---------------------------------------------------------------------------
@@ -210,15 +212,11 @@ async def list_meet_recordings(
 
 
 def export_transcript_sync(access_token: str, file_id: str) -> str:
-    """Export a Google Doc transcript as plain text.
-
-    Used when the Meet recording folder contains a Google Doc transcript
-    instead of (or in addition to) a video file. Exporting the existing
-    transcript is faster and cheaper than transcribing audio.
+    """Export a Google Meet transcript Google Doc as plain text.
 
     Args:
         access_token: A valid Google access token with drive.readonly scope.
-        file_id: The Google Drive file ID of a Google Doc.
+        file_id: The Google Drive file ID of the transcript Google Doc.
 
     Returns:
         Plain text content of the transcript.
@@ -242,41 +240,3 @@ def export_transcript_sync(access_token: str, file_id: str) -> str:
     text = response.text
     logger.info("Exported transcript %d chars for Drive file %s", len(text), file_id)
     return text
-
-
-# ---------------------------------------------------------------------------
-# Drive download (sync — used by Celery ingest task for video files)
-# ---------------------------------------------------------------------------
-
-
-def download_recording_sync(access_token: str, file_id: str) -> bytes:
-    """Download a Drive file to memory and return the raw bytes.
-
-    IMPORTANT: The caller MUST delete the returned bytes object immediately
-    after transcription. Audio is never written to disk or stored.
-
-    Args:
-        access_token: A valid Google access token with drive.readonly scope.
-        file_id: The Google Drive file ID to download.
-
-    Returns:
-        Raw audio bytes.
-
-    Raises:
-        PermissionError: If the token is invalid or expired.
-        httpx.HTTPStatusError: On other HTTP errors.
-    """
-    url = f"{_DRIVE_FILES_URL}/{file_id}?alt=media"
-    with httpx.Client(timeout=300.0, follow_redirects=True) as client:
-        response = client.get(
-            url,
-            headers={"Authorization": f"Bearer {access_token}"},
-        )
-
-    if response.status_code == 401:
-        raise PermissionError("Google access token is invalid or expired for file download")
-    response.raise_for_status()
-
-    size = len(response.content)
-    logger.info("Downloaded %d bytes for Drive file %s", size, file_id)
-    return response.content

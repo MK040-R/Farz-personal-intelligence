@@ -1,34 +1,31 @@
 """
-Ingest worker — full pipeline from Google Drive recording to stored transcript.
+Ingest worker — Google Meet transcript pipeline.
 
-Pipeline per recording:
+Pipeline per transcript:
   1. Refresh Google access token (refresh_token → fresh access_token)
-  2. Download audio/video bytes from Drive to memory
-  3. Transcribe via Deepgram Nova-3 with speaker diarisation
-  4. Hard-delete audio bytes from memory immediately
-  5. Persist Conversation + TranscriptSegments to Postgres (via RLS-scoped client)
-  6. Update user_index.last_updated
+  2. Export transcript text from Google Drive (Google Doc → plain text)
+  3. Parse plain text into speaker segments
+  4. Persist Conversation + TranscriptSegments to Postgres (via RLS-scoped client)
+  5. Update user_index.last_updated
 
 Rules:
-- Audio bytes are NEVER written to disk and NEVER stored anywhere.
 - Transcript content is NEVER logged — only IDs and counts.
 - user_jwt is used for all DB operations (RLS enforced, never service_role).
 - drive_file_id uniqueness prevents double-import (handled by DB unique index).
 """
 
-import gc
 import logging
+import re
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
 from celery import Celery
-from deepgram import DeepgramClient, PrerecordedOptions
 
 from src import celeryconfig
-from src.config import settings
+from src.config import settings  # noqa: F401 — imported for startup validation
 from src.database import get_client
-from src.drive_client import download_recording_sync, refresh_access_token_sync
+from src.drive_client import export_transcript_sync, refresh_access_token_sync
 from src.workers.embed import embed_conversation
 from src.workers.extract import extract_from_conversation
 
@@ -37,43 +34,100 @@ logger = logging.getLogger(__name__)
 celery_app = Celery("farz")
 celery_app.config_from_object(celeryconfig)
 
+# Average speaking rate used to estimate end_ms when the transcript has no
+# end timestamp for a segment (130 words per minute → ~462 ms per word).
+_MS_PER_WORD = int(60_000 / 130)
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
 
-def _transcribe_bytes(audio_bytes: bytes, mime_type: str = "video/mp4") -> list[dict[str, Any]]:
-    """Send audio bytes to Deepgram and return a list of utterance dicts.
+def _timestamp_to_ms(ts: str) -> int:
+    """Convert a MM:SS or HH:MM:SS timestamp string to milliseconds."""
+    parts = ts.strip().split(":")
+    try:
+        if len(parts) == 2:  # MM:SS
+            return (int(parts[0]) * 60 + int(parts[1])) * 1000
+        if len(parts) == 3:  # HH:MM:SS
+            return (int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])) * 1000
+    except ValueError:
+        pass
+    return 0
 
-    Each dict has keys: speaker_id (str), start_ms (int), end_ms (int), text (str).
 
-    IMPORTANT: audio_bytes is not stored or logged. Caller must del it after this call.
+def _parse_google_transcript(text: str) -> list[dict[str, Any]]:
+    """Parse a Google Meet plain-text transcript export into speaker segments.
+
+    Google Meet exports transcripts in this format:
+        Speaker Name
+        00:00
+        What they said
+
+        Other Speaker
+        00:15
+        Their response
+
+    Returns a list of dicts with keys:
+        speaker_id (str), start_ms (int), end_ms (int), text (str)
+
+    If timestamps are missing, start_ms is estimated from position and end_ms
+    is estimated from word count at 130 wpm.
     """
-    deepgram = DeepgramClient(settings.DEEPGRAM_API_KEY)
-    options = PrerecordedOptions(
-        model="nova-3",
-        diarize=True,
-        punctuate=True,
-        utterances=True,
-        language="en-US",
-    )
-    payload: dict[str, Any] = {"buffer": audio_bytes, "mimetype": mime_type}
-    response = deepgram.listen.rest.v("1").transcribe_file(payload, options)
+    # Normalise line endings
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
 
-    utterances: list[dict[str, Any]] = []
-    if response.results and response.results.utterances:
-        for utt in response.results.utterances:
-            utterances.append(
-                {
-                    "speaker_id": f"speaker_{utt.speaker}",
-                    "start_ms": int(utt.start * 1000),
-                    "end_ms": int(utt.end * 1000),
-                    "text": utt.transcript,
-                }
-            )
-    logger.info("Transcription complete — %d utterances returned", len(utterances))
-    return utterances
+    # Split into non-empty blocks separated by blank lines
+    blocks = [b.strip() for b in re.split(r"\n{2,}", text) if b.strip()]
+
+    ts_re = re.compile(r"^\d{1,2}:\d{2}(:\d{2})?$")
+
+    segments: list[dict[str, Any]] = []
+    cursor_ms = 0
+
+    for block in blocks:
+        lines = [ln.strip() for ln in block.splitlines() if ln.strip()]
+        if not lines:
+            continue
+
+        speaker = lines[0]
+
+        # Identify timestamp line (MM:SS or HH:MM:SS)
+        ts_ms: int | None = None
+        text_lines: list[str] = []
+        for ln in lines[1:]:
+            if ts_ms is None and _TS_RE.match(ln):
+                ts_ms = _timestamp_to_ms(ln)
+            else:
+                text_lines.append(ln)
+
+        segment_text = " ".join(text_lines).strip()
+        if not segment_text:
+            continue
+
+        start_ms = ts_ms if ts_ms is not None else cursor_ms
+        word_count = len(segment_text.split())
+        estimated_duration = max(word_count * _MS_PER_WORD, 1000)
+
+        segments.append(
+            {
+                "speaker_id": speaker,
+                "start_ms": start_ms,
+                "end_ms": start_ms + estimated_duration,
+                "text": segment_text,
+            }
+        )
+        cursor_ms = start_ms + estimated_duration
+
+    # Back-fill end_ms: use next segment's start_ms when available
+    for i in range(len(segments) - 1):
+        next_start = segments[i + 1]["start_ms"]
+        if next_start > segments[i]["start_ms"]:
+            segments[i]["end_ms"] = next_start
+
+    logger.info("Parsed %d segments from transcript", len(segments))
+    return segments
 
 
 # ---------------------------------------------------------------------------
@@ -85,35 +139,30 @@ def _transcribe_bytes(audio_bytes: bytes, mime_type: str = "video/mp4") -> list[
     bind=True,
     max_retries=2,
     default_retry_delay=60,
-    soft_time_limit=600,
-    time_limit=900,
+    soft_time_limit=300,
+    time_limit=600,
 )
 def ingest_recording(
     self: Any,
     drive_file_id: str,
     file_name: str,
     created_time_iso: str,
-    mime_type: str,
     user_id: str,
     user_jwt: str,
     google_refresh_token: str,
 ) -> dict[str, Any]:
-    """Download, transcribe, and persist a single Google Drive recording.
+    """Export, parse, and persist a single Google Meet transcript.
 
     Args:
-        drive_file_id: Google Drive file ID.
+        drive_file_id: Google Drive file ID of the transcript Google Doc.
         file_name: Human-readable name (used as conversation title).
-        created_time_iso: ISO-8601 timestamp of the recording (from Drive metadata).
-        mime_type: MIME type of the Drive file (e.g. "video/mp4").
+        created_time_iso: ISO-8601 timestamp of the transcript (from Drive metadata).
         user_id: Supabase user UUID (for per-user isolation).
         user_jwt: Supabase JWT — used for all DB writes (RLS enforced).
         google_refresh_token: Used to obtain a fresh Google access token.
 
     Returns:
         dict with conversation_id, segment_count, and already_existed flag.
-
-    Raises:
-        ValueError: If any required argument is empty.
     """
     required = [drive_file_id, file_name, created_time_iso, user_id, user_jwt, google_refresh_token]
     if not all(required):
@@ -132,50 +181,43 @@ def ingest_recording(
     )
     if existing.data:
         conversation_id = existing.data[0]["id"]
-        logger.info("Recording already imported — conversation=%s, skipping", conversation_id)
+        logger.info("Transcript already imported — conversation=%s, skipping", conversation_id)
         return {
             "conversation_id": conversation_id,
             "segment_count": 0,
             "already_existed": True,
+            "user_id": user_id,
+            "drive_file_id": drive_file_id,
         }
 
     # --- Step 1: Refresh Google access token ---
     self.update_state(state="PROGRESS", meta={"status": "authenticating", "user_id": user_id})
     access_token = refresh_access_token_sync(google_refresh_token)
 
-    # --- Step 2: Download audio to memory ---
-    self.update_state(state="PROGRESS", meta={"status": "downloading", "user_id": user_id})
-    audio_bytes = download_recording_sync(access_token, drive_file_id)
+    # --- Step 2: Export transcript text from Google Drive ---
+    self.update_state(state="PROGRESS", meta={"status": "fetching_transcript", "user_id": user_id})
+    transcript_text = export_transcript_sync(access_token, drive_file_id)
 
-    # --- Step 3: Transcribe ---
-    self.update_state(state="PROGRESS", meta={"status": "transcribing", "user_id": user_id})
-    try:
-        utterances = _transcribe_bytes(audio_bytes, mime_type=mime_type)
-    finally:
-        # --- Step 4: Hard-delete audio bytes from memory ---
-        del audio_bytes
-        gc.collect()
-        logger.info("Audio bytes deleted from memory — file_id=%s", drive_file_id)
+    # --- Step 3: Parse transcript into segments ---
+    self.update_state(state="PROGRESS", meta={"status": "parsing", "user_id": user_id})
+    utterances = _parse_google_transcript(transcript_text)
 
-    # --- Step 5: Persist to Postgres ---
+    # --- Step 4: Persist to Postgres ---
     self.update_state(state="PROGRESS", meta={"status": "saving", "user_id": user_id})
 
-    # Parse recording timestamp
     try:
         meeting_date = datetime.fromisoformat(created_time_iso)
     except ValueError:
         meeting_date = datetime.now(tz=UTC)
 
-    # Duration from last utterance end time
     duration_seconds: int | None = None
     if utterances:
         duration_seconds = utterances[-1]["end_ms"] // 1000
 
-    # Insert Conversation
     conversation_row = {
         "user_id": user_id,
         "title": file_name,
-        "source": "google_drive",
+        "source": "google_meet_transcript",
         "meeting_date": meeting_date.isoformat(),
         "duration_seconds": duration_seconds,
         "drive_file_id": drive_file_id,
@@ -183,7 +225,6 @@ def ingest_recording(
     conv_result = db.table("conversations").insert(conversation_row).execute()
     conversation_id = conv_result.data[0]["id"]
 
-    # Bulk insert TranscriptSegments
     if utterances:
         segments = [
             {
@@ -199,7 +240,7 @@ def ingest_recording(
         ]
         db.table("transcript_segments").insert(segments).execute()
 
-    # --- Step 6: Update user_index last_updated ---
+    # --- Step 5: Update user_index last_updated ---
     db.table("user_index").update({"last_updated": datetime.now(tz=UTC).isoformat()}).eq(
         "user_id", user_id
     ).execute()
@@ -212,8 +253,6 @@ def ingest_recording(
     )
 
     # --- Chain downstream tasks: extraction then embedding ---
-    # These are dispatched independently (not as a Celery chain) so that
-    # a failure in extraction/embedding does not affect the ingest result.
     extract_from_conversation.delay(
         conversation_id=conversation_id,
         user_id=user_id,
