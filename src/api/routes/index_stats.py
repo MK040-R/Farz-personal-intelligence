@@ -27,7 +27,7 @@ class IndexStats(BaseModel):
 
 
 @router.get(
-    "",
+    "/stats",
     response_model=IndexStats,
     summary="Return counts and last-updated time from the user's index",
 )
