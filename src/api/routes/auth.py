@@ -160,8 +160,8 @@ async def callback(
         key="session",
         value=session.access_token,
         httponly=True,
-        samesite="lax",
-        secure=(settings.ENVIRONMENT != "development"),
+        samesite="none",
+        secure=True,
         max_age=_SESSION_COOKIE_MAX_AGE,
         path="/",
     )
