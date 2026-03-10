@@ -8,7 +8,7 @@ Transcript content is never logged — only IDs are written to the log.
 import logging
 from typing import Any
 
-from src.celery_app import celery_app
+from src.celery_app import celery_app as celery_app
 
 logger = logging.getLogger(__name__)
 

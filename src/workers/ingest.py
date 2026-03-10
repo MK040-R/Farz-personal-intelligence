@@ -20,7 +20,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from src.celery_app import celery_app
+from src.celery_app import celery_app as celery_app
 from src.config import settings  # noqa: F401 — imported for startup validation
 from src.database import get_client
 from src.drive_client import export_transcript_sync, refresh_access_token_sync
