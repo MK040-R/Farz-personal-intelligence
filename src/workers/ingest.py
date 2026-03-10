@@ -180,7 +180,7 @@ def ingest_recording(
         "drive_file_id": drive_file_id,
     }
     conv_result = db.table("conversations").insert(conversation_row).execute()
-    conversation_id: str = conv_result.data[0]["id"]
+    conversation_id = conv_result.data[0]["id"]
 
     # Bulk insert TranscriptSegments
     if utterances:

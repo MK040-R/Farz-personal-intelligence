@@ -86,6 +86,14 @@ MODULES = [
     ("src.llm_client", "LLM client — AI gateway (instructor + Claude)"),
     ("src.celeryconfig", "Celery config — Redis broker setup"),
     ("src.workers.tasks", "Celery tasks — process_transcript + generate_brief"),
+    ("src.workers.extract", "Celery task — extract_from_conversation"),
+    ("src.workers.embed", "Celery task — embed_conversation"),
+    ("src.api.routes.conversations", "Route: GET /conversations, GET /conversations/{id}"),
+    ("src.api.routes.search", "Route: POST /search (pgvector semantic search)"),
+    ("src.api.routes.topics", "Route: GET /topics, GET /topics/{id}"),
+    ("src.api.routes.commitments", "Route: GET /commitments, PATCH /commitments/{id}"),
+    ("src.api.routes.index_stats", "Route: GET /index/stats"),
+    ("src.api.routes.calendar", "Route: GET /calendar/today"),
     ("src.models.conversation", "Model: Conversation"),
     ("src.models.transcript_segment", "Model: TranscriptSegment"),
     ("src.models.topic", "Model: Topic"),
@@ -133,15 +141,11 @@ EXPECTED_TABLES = [
     "connection_linked_items",
 ]
 
+_db_url = os.getenv("DATABASE_URL", "")
 try:
-    conn = psycopg2.connect(
-        host="db.mhwfqvzjkkqxpqcoczcr.supabase.co",
-        port=5432,
-        dbname="postgres",
-        user="postgres",
-        password="Supabase@1106",
-        sslmode="require",
-    )
+    if not _db_url:
+        raise RuntimeError("DATABASE_URL not set — skipping DB checks")
+    conn = psycopg2.connect(_db_url, sslmode="require")
     cur = conn.cursor()
     cur.execute("""
         SELECT table_name FROM information_schema.tables
@@ -167,14 +171,9 @@ except Exception as exc:
 section("4 · Row Level Security (RLS)")
 
 try:
-    conn = psycopg2.connect(
-        host="db.mhwfqvzjkkqxpqcoczcr.supabase.co",
-        port=5432,
-        dbname="postgres",
-        user="postgres",
-        password="Supabase@1106",
-        sslmode="require",
-    )
+    if not _db_url:
+        raise RuntimeError("DATABASE_URL not set — skipping RLS checks")
+    conn = psycopg2.connect(_db_url, sslmode="require")
     cur = conn.cursor()
     cur.execute("""
         SELECT relname, relrowsecurity, relforcerowsecurity
@@ -275,6 +274,7 @@ try:
         CommitmentList,
         EntityList,
         TopicList,
+        embed_texts,
         extract_commitments,
         extract_entities,
         extract_topics,
@@ -287,6 +287,7 @@ try:
     check("extract_commitments function", "Function is importable and callable", callable(extract_commitments))
     check("extract_entities function", "Function is importable and callable", callable(extract_entities))
     check("generate_brief function", "Function is importable and callable", callable(generate_brief))
+    check("embed_texts function", "OpenAI embedding function is importable and callable", callable(embed_texts))
 except Exception as exc:
     check("LLM client imports", "All LLM client symbols importable", False, str(exc)[:200])
 
@@ -299,9 +300,13 @@ section("8 · Celery Worker Tasks")
 
 try:
     from src.workers.tasks import celery_app, generate_brief as gb_task, process_transcript
+    from src.workers.extract import extract_from_conversation
+    from src.workers.embed import embed_conversation
     check("Celery app", "Celery app instantiates without error", True)
-    check("process_transcript task", "Task is registered on the Celery app", True)
-    check("generate_brief task", "Task is registered on the Celery app", True)
+    check("process_transcript task", "Task is importable", callable(process_transcript))
+    check("generate_brief task", "Task is importable", callable(gb_task))
+    check("extract_from_conversation task", "Wave 2 extraction task is importable", callable(extract_from_conversation))
+    check("embed_conversation task", "Wave 2 embedding task is importable", callable(embed_conversation))
     registered = list(celery_app.tasks.keys())
     pt_registered = any("process_transcript" in t for t in registered)
     gb_registered = any("generate_brief" in t for t in registered)

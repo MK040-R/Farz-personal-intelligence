@@ -157,7 +157,12 @@ def update_commitment(
         .execute()
     )
 
-    updated = update_result.data[0] if update_result.data else {}
+    if not update_result.data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Commitment not found or update failed",
+        )
+    updated = update_result.data[0]
 
     # Fetch conversation title
     conv_result = (

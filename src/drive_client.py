@@ -12,6 +12,7 @@ Sync functions are used inside Celery tasks.
 
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 import httpx
 from pydantic import BaseModel
@@ -136,7 +137,7 @@ async def list_meet_recordings(
         raise PermissionError("Google access token is invalid or expired")
     response.raise_for_status()
 
-    files: list[dict] = response.json().get("files", [])
+    files: list[dict[str, Any]] = response.json().get("files", [])
     recordings: list[DriveRecording] = []
     for f in files:
         try:
