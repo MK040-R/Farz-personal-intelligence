@@ -1,9 +1,13 @@
 """
-Google Drive client — lists Meet recordings and downloads audio.
+Google Drive client — lists Meet recordings (transcripts + video) and exports text.
+
+Google Meet saves two things to the "Meet Recordings" folder:
+  1. Transcript Google Docs (application/vnd.google-apps.document) — always present when
+     transcription is enabled. These are preferred: no Deepgram cost, instant processing.
+  2. Video files (video/mp4) — only present when recording is enabled.
 
 Rules enforced here:
-- Audio bytes are returned to the caller in memory and never written to disk.
-- Callers (Celery tasks) MUST del the audio bytes immediately after transcription.
+- Transcript text is returned to the caller in memory and never written to disk.
 - Token refresh is a separate explicit call — never silently retried.
 
 Async functions are used for FastAPI route handlers.
@@ -24,8 +28,8 @@ logger = logging.getLogger(__name__)
 _DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files"
 _TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"  # noqa: S105
 
-# Google Meet recordings land in Drive as video/mp4 files.
-# We also check video/webm as some older Meet versions used it.
+# Supported MIME types — Google Docs transcripts are preferred over video files.
+_TRANSCRIPT_MIME_TYPE = "application/vnd.google-apps.document"
 _RECORDING_MIME_TYPES = ("video/mp4", "video/webm", "video/quicktime")
 
 
@@ -35,6 +39,7 @@ class DriveRecording(BaseModel):
     created_time: datetime
     size_bytes: int | None = None
     mime_type: str
+    is_transcript: bool = False  # True for Google Doc transcripts, False for video files
 
 
 # ---------------------------------------------------------------------------
@@ -144,13 +149,17 @@ async def list_meet_recordings(
     async with httpx.AsyncClient(timeout=30.0) as client:
         folder_ids = await _get_meet_folder_ids(client, access_token)
 
+        # Include both Google Doc transcripts and video files
+        doc_mime = f"mimeType='{_TRANSCRIPT_MIME_TYPE}'"
+        all_mime_clause = f"({mime_clause} or {doc_mime})"
+
         if folder_ids:
             # Restrict search to Meet Recordings folders
             parent_clause = " or ".join(f"'{fid}' in parents" for fid in folder_ids)
-            query = f"({mime_clause}) and ({parent_clause}) and createdTime >= '{since_str}' and trashed=false"
+            query = f"{all_mime_clause} and ({parent_clause}) and createdTime >= '{since_str}' and trashed=false"
         else:
             # No Meet Recordings folder yet — fall back to name pattern
-            query = f"({mime_clause}) and name contains 'Meet' and createdTime >= '{since_str}' and trashed=false"
+            query = f"{all_mime_clause} and name contains 'Meet' and createdTime >= '{since_str}' and trashed=false"
 
         params = {
             "q": query,
@@ -180,6 +189,7 @@ async def list_meet_recordings(
                     created_time=datetime.fromisoformat(f["createdTime"].replace("Z", "+00:00")),
                     size_bytes=int(f["size"]) if f.get("size") else None,
                     mime_type=f["mimeType"],
+                    is_transcript=f["mimeType"] == _TRANSCRIPT_MIME_TYPE,
                 )
             )
         except (KeyError, ValueError) as exc:
@@ -195,7 +205,47 @@ async def list_meet_recordings(
 
 
 # ---------------------------------------------------------------------------
-# Drive download (sync — used by Celery ingest task)
+# Transcript export (sync — used by Celery ingest task)
+# ---------------------------------------------------------------------------
+
+
+def export_transcript_sync(access_token: str, file_id: str) -> str:
+    """Export a Google Doc transcript as plain text.
+
+    Used when the Meet recording folder contains a Google Doc transcript
+    instead of (or in addition to) a video file. Exporting the existing
+    transcript is faster and cheaper than transcribing audio.
+
+    Args:
+        access_token: A valid Google access token with drive.readonly scope.
+        file_id: The Google Drive file ID of a Google Doc.
+
+    Returns:
+        Plain text content of the transcript.
+
+    Raises:
+        PermissionError: If the token is invalid or expired.
+        httpx.HTTPStatusError: On other HTTP errors.
+    """
+    url = f"{_DRIVE_FILES_URL}/{file_id}/export"
+    with httpx.Client(timeout=60.0) as client:
+        response = client.get(
+            url,
+            params={"mimeType": "text/plain"},
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+    if response.status_code == 401:
+        raise PermissionError("Google access token is invalid or expired for transcript export")
+    response.raise_for_status()
+
+    text = response.text
+    logger.info("Exported transcript %d chars for Drive file %s", len(text), file_id)
+    return text
+
+
+# ---------------------------------------------------------------------------
+# Drive download (sync — used by Celery ingest task for video files)
 # ---------------------------------------------------------------------------
 
 

@@ -37,6 +37,7 @@ class AvailableRecording(BaseModel):
     size_bytes: int | None
     mime_type: str
     already_imported: bool
+    is_transcript: bool = False
 
 
 class ImportRequest(BaseModel):
@@ -187,6 +188,7 @@ async def available_recordings(
             size_bytes=r.size_bytes,
             mime_type=r.mime_type,
             already_imported=r.file_id in imported_ids,
+            is_transcript=r.is_transcript,
         )
         for r in drive_recordings
     ]
