@@ -91,14 +91,40 @@ def refresh_access_token_sync(refresh_token: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+async def _get_meet_folder_ids(
+    client: httpx.AsyncClient,
+    access_token: str,
+) -> list[str]:
+    """Return the Drive folder IDs for all folders named 'Meet Recordings'.
+
+    Google Meet automatically saves recordings to a folder with this name.
+    Returns an empty list if no such folder exists (user has no recordings yet).
+    """
+    params = {
+        "q": "mimeType='application/vnd.google-apps.folder' and name='Meet Recordings' and trashed=false",
+        "fields": "files(id)",
+        "pageSize": "10",
+    }
+    response = await client.get(
+        _DRIVE_FILES_URL,
+        params=params,
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    if response.status_code == 401:
+        raise PermissionError("Google access token is invalid or expired")
+    response.raise_for_status()
+    return [f["id"] for f in response.json().get("files", [])]
+
+
 async def list_meet_recordings(
     access_token: str,
     lookback_days: int = 60,
 ) -> list[DriveRecording]:
     """List Google Meet recording files from Drive created in the last lookback_days.
 
-    Searches for video files (mp4/webm) not in Trash. Results are ordered
-    newest-first, capped at 100 files per call.
+    Searches only inside 'Meet Recordings' folders (where Google Meet saves all
+    recordings automatically). Falls back to a name-based filter if no such
+    folder exists. Results are ordered newest-first, capped at 100 files.
 
     Args:
         access_token: A valid Google access token with drive.readonly scope.
@@ -113,18 +139,26 @@ async def list_meet_recordings(
     """
     since = datetime.now(tz=UTC) - timedelta(days=lookback_days)
     since_str = since.strftime("%Y-%m-%dT%H:%M:%SZ")
-
     mime_clause = " or ".join(f"mimeType='{mt}'" for mt in _RECORDING_MIME_TYPES)
-    query = f"({mime_clause}) and createdTime >= '{since_str}' and trashed = false"
-
-    params = {
-        "q": query,
-        "fields": "files(id,name,createdTime,size,mimeType)",
-        "orderBy": "createdTime desc",
-        "pageSize": "100",
-    }
 
     async with httpx.AsyncClient(timeout=30.0) as client:
+        folder_ids = await _get_meet_folder_ids(client, access_token)
+
+        if folder_ids:
+            # Restrict search to Meet Recordings folders
+            parent_clause = " or ".join(f"'{fid}' in parents" for fid in folder_ids)
+            query = f"({mime_clause}) and ({parent_clause}) and createdTime >= '{since_str}' and trashed=false"
+        else:
+            # No Meet Recordings folder yet — fall back to name pattern
+            query = f"({mime_clause}) and name contains 'Meet' and createdTime >= '{since_str}' and trashed=false"
+
+        params = {
+            "q": query,
+            "fields": "files(id,name,createdTime,size,mimeType)",
+            "orderBy": "createdTime desc",
+            "pageSize": "100",
+        }
+
         response = await client.get(
             _DRIVE_FILES_URL,
             params=params,
@@ -152,9 +186,10 @@ async def list_meet_recordings(
             logger.warning("Skipping malformed Drive file entry: %s", exc)
 
     logger.debug(
-        "Drive listing: %d recordings found (lookback=%d days)",
+        "Drive listing: %d recordings found (lookback=%d days, folder_filter=%s)",
         len(recordings),
         lookback_days,
+        bool(folder_ids),
     )
     return recordings
 
