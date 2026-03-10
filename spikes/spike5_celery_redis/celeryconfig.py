@@ -5,6 +5,7 @@ Reads UPSTASH_REDIS_URL from environment (fail-fast if missing).
 All settings are tuned for reliability with a serverless Redis backend.
 """
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -24,7 +25,7 @@ if not REDIS_URL:
         arg in sys.argv for arg in ("worker", "beat", "inspect", "control")
     )
     if _running_as_worker:
-        raise EnvironmentError(
+        raise OSError(
             "UPSTASH_REDIS_URL is not set. "
             "Copy .env.example to .env and add your Upstash Redis URL."
         )

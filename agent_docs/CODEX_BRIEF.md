@@ -49,7 +49,7 @@ Claude Code owns: src/               (Python backend)
 **Claude Code must NOT touch:**
 - Anything in `frontend/`
 
-Both agents may update `PROGRESS.md` — but only to record their own completed waves.
+Both agents may update `docs/working-notes/PROGRESS.md` — but only to record their own completed waves.
 
 ---
 

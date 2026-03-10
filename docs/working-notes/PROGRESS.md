@@ -1,7 +1,7 @@
 # Farz — Build Progress
 
 > This document is written for non-technical readers. It is updated automatically after every completed task.
-> Last updated: 2026-03-10 (Backend hardening complete — 60 tests passing, Render deployment config ready, frontend integration in progress)
+> Last updated: 2026-03-10 (Linear board fully populated — FAR-276 to FAR-326 created; all 22 remaining sub-tasks added covering User Hard Delete, Data Export, and Render.com Deployment)
 
 ---
 
@@ -405,6 +405,27 @@ After the frontend engineer (Codex) reviewed the backend, four issues were found
 - **22 new unit tests** added for commitments and topics endpoints — total now 60 tests passing
 - **Render deployment config created** (`render.yaml`) — the file that tells Render.com how to run the backend. Four services defined: one web API and three background workers.
 - **Database migration applied** — the `status` column on conversations (processing → indexed) is now live in Supabase
+
+---
+
+---
+
+## ✅ Linear Project Board — Fully Populated (FAR-1 to FAR-326)
+
+All 326 Linear issues have been created across 5 projects. The board is now complete and ready for sprint planning.
+
+| Project | Issues | Coverage |
+|---|---|---|
+| Phase 0a — Technical Spikes | FAR-1 to ~FAR-104 | All spike tasks + CI isolation tests |
+| Phase 0 — Foundation | FAR-35 + sub-tasks | Dashboard + foundation items |
+| Phase 1 — Google Drive Retro-import + Intelligence | FAR-105 to ~FAR-275 | All Phase 1 tasks |
+| Phase 2 — Intelligence Surface | FAR-276–318 | Commitment Tracker, Shared Brief, Insights, Hard Delete, Data Export |
+| Security & Infrastructure | FAR-279, FAR-319–326 | Render.com deployment (8 sub-tasks) |
+
+**Last batch added (this session):**
+- FAR-305–313: User Hard Delete (9 tasks under FAR-277)
+- FAR-314–318: User Data Export (5 tasks under FAR-278)
+- FAR-319–326: Render.com Deployment (8 tasks under FAR-279)
 
 ---
 

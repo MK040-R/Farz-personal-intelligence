@@ -16,7 +16,7 @@ import sys
 import time
 from pathlib import Path
 
-from deepgram import DeepgramClient, PrerecordedOptions, FileSource
+from deepgram import DeepgramClient, FileSource, PrerecordedOptions
 from dotenv import load_dotenv
 
 load_dotenv()

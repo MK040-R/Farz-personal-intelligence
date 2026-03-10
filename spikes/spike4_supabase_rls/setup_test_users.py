@@ -18,8 +18,7 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
-from supabase import create_client, Client
-from supabase.lib.client_options import ClientOptions
+from supabase import Client, create_client
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -61,7 +60,7 @@ CREDENTIALS_PATH = Path(__file__).parent / "test_credentials.json"
 
 def get_admin_client() -> Client:
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-        raise EnvironmentError(
+        raise OSError(
             "SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in .env"
         )
     return create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
@@ -69,7 +68,7 @@ def get_admin_client() -> Client:
 
 def get_anon_client() -> Client:
     if not SUPABASE_URL or not SUPABASE_ANON_KEY:
-        raise EnvironmentError(
+        raise OSError(
             "SUPABASE_URL and SUPABASE_ANON_KEY must be set in .env"
         )
     return create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
@@ -164,11 +163,11 @@ def main() -> None:
         user_id = user.id if hasattr(user, "id") else user["id"]
 
         # Insert sample rows using admin (service key) so RLS does not interfere
-        print(f"  Inserting sample conversations...")
+        print("  Inserting sample conversations...")
         insert_conversations_for_user(admin, user_id, spec["conversations"])
 
         # Sign in to obtain a user-scoped JWT
-        print(f"  Signing in to obtain JWT...")
+        print("  Signing in to obtain JWT...")
         session = sign_in_user(email, password)
 
         credentials[label] = {
@@ -177,7 +176,7 @@ def main() -> None:
             "access_token": session.access_token,
             "refresh_token": session.refresh_token,
         }
-        print(f"  JWT obtained.\n")
+        print("  JWT obtained.\n")
 
     # Persist credentials for the test suite
     with CREDENTIALS_PATH.open("w") as fh:
@@ -191,6 +190,6 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
-    except EnvironmentError as exc:
+    except OSError as exc:
         print(f"\nConfiguration error: {exc}", file=sys.stderr)
         sys.exit(1)

@@ -22,7 +22,7 @@ Run it only once. If you need to re-run, delete the created issues in Linear fir
 import os
 import sys
 import time
-import json
+
 import requests as _requests
 
 # ── Config ────────────────────────────────────────────────────────────────────

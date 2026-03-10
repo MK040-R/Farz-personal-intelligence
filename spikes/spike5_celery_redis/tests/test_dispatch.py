@@ -8,10 +8,8 @@ Requires:
 Run:
     pytest tests/test_dispatch.py -v --timeout=30 -m integration
 """
-import time
 
 import pytest
-
 from tasks import process_transcript
 
 pytestmark = pytest.mark.integration

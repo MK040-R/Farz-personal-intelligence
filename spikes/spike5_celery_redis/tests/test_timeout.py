@@ -33,10 +33,8 @@ Our configuration (celeryconfig.py):
 Implication: tasks longer than visibility_timeout will appear to re-queue
 (duplicate execution risk).  Set visibility_timeout > longest task duration.
 """
-import time
 
 import pytest
-
 from tasks import app, slow_task
 
 pytestmark = pytest.mark.integration

@@ -26,11 +26,9 @@ This test module:
   2. Dispatches tasks and confirms they complete across a simulated restart.
   3. Documents the manual steps to verify crash-recovery end-to-end.
 """
-import time
 
 import pytest
-
-from tasks import app, process_transcript, slow_task
+from tasks import app, process_transcript
 
 pytestmark = pytest.mark.integration
 

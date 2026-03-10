@@ -16,11 +16,9 @@ What is being validated
 4. A task configured with max_retries exhausted raises the original exception
    and reaches FAILURE state.
 """
-import time
 
 import pytest
-
-from tasks import app, failing_task, process_transcript
+from tasks import failing_task, process_transcript
 
 pytestmark = pytest.mark.integration
 

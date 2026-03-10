@@ -24,7 +24,6 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -93,7 +92,7 @@ def extract_transcript_text(response: dict) -> str:
         return ""
 
 
-def extract_confidence(response: dict) -> Optional[float]:
+def extract_confidence(response: dict) -> float | None:
     """Extract the top-level confidence score from a Deepgram response dict."""
     try:
         return response["results"]["channels"][0]["alternatives"][0]["confidence"]
@@ -129,7 +128,7 @@ def load_transcripts(output_dir: Path) -> list[tuple[str, dict]]:
     return results
 
 
-def prompt_reference_transcript(stem: str) -> Optional[str]:
+def prompt_reference_transcript(stem: str) -> str | None:
     """Interactively ask the user for a reference transcript for WER calculation."""
     print(f"\n  [WER] Paste reference transcript for '{stem}'.")
     print("  (Press Enter twice when done, or type 'skip' to skip WER for this file.)")

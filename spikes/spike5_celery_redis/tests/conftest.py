@@ -8,9 +8,7 @@ never touch the network.
 import os
 
 import pytest
-
 from tasks import app as celery_app
-
 
 # ---------------------------------------------------------------------------
 # Markers

@@ -2,13 +2,13 @@ import json
 import os
 
 import anthropic
-
-from models import CommitmentExtraction, EntityList, TopicList
 from prompts import (
     COMMITMENT_SYSTEM_PROMPT,
     ENTITY_SYSTEM_PROMPT,
     TOPIC_SYSTEM_PROMPT,
 )
+
+from models import CommitmentExtraction, EntityList, TopicList
 
 MODEL = os.getenv("LLM_MODEL", "claude-opus-4-6")
 
@@ -16,7 +16,7 @@ MODEL = os.getenv("LLM_MODEL", "claude-opus-4-6")
 def _get_client() -> anthropic.Anthropic:
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
-        raise EnvironmentError(
+        raise OSError(
             "ANTHROPIC_API_KEY environment variable is not set. "
             "Copy .env.example to .env and add your key."
         )

@@ -29,9 +29,8 @@ import argparse
 import json
 import os
 import sys
-from collections import Counter, defaultdict
+from collections import Counter
 from pathlib import Path
-from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -101,7 +100,7 @@ def compute_speaker_consistency(turns: list[dict]) -> float:
     return stable_words / total_words if total_words > 0 else 0.0
 
 
-def rate_speaker_count_accuracy(detected: int, expected: Optional[int]) -> str:
+def rate_speaker_count_accuracy(detected: int, expected: int | None) -> str:
     if expected is None:
         return "Unknown (no expected count provided)"
     diff = abs(detected - expected)
@@ -132,7 +131,7 @@ def rate_avg_words_per_turn(avg: float) -> str:
 # Per-file evaluation
 # ---------------------------------------------------------------------------
 
-def evaluate_file(stem: str, response: dict, expected_speakers: Optional[int]) -> dict:
+def evaluate_file(stem: str, response: dict, expected_speakers: int | None) -> dict:
     words = extract_words_with_speakers(response)
     if not words:
         return {
@@ -191,7 +190,7 @@ def print_file_report(metrics: dict) -> None:
     print(f"    Avg words/turn         : {metrics['avg_words_per_turn']} ({metrics['avg_words_per_turn_rating']})")
     print(f"    Consistency score      : {metrics['consistency_score']} ({metrics['consistency_rating']})")
     if metrics.get("underdiarized_flag"):
-        print(f"    *** FLAG: Fewer speakers detected than expected — possible under-diarization ***")
+        print("    *** FLAG: Fewer speakers detected than expected — possible under-diarization ***")
     print(f"    Words per speaker      : {metrics['words_per_speaker']}")
     print()
 

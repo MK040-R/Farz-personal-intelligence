@@ -8,7 +8,6 @@ Results are saved to results/{transcript_stem}/topics.json,
 commitments.json, and entities.json.
 """
 
-import json
 import os
 import sys
 import time
@@ -45,19 +44,19 @@ def process_transcript(transcript_path: Path) -> dict:
 
     start = time.monotonic()
 
-    print(f"  [topics]       extracting...", end="", flush=True)
+    print("  [topics]       extracting...", end="", flush=True)
     topics = extract_topics(transcript)
     topics_path = out_dir / "topics.json"
     topics_path.write_text(topics.model_dump_json(indent=2), encoding="utf-8")
     print(f" {len(topics.topics)} found")
 
-    print(f"  [commitments]  extracting...", end="", flush=True)
+    print("  [commitments]  extracting...", end="", flush=True)
     commitments = extract_commitments(transcript)
     commitments_path = out_dir / "commitments.json"
     commitments_path.write_text(commitments.model_dump_json(indent=2), encoding="utf-8")
     print(f" {len(commitments.commitments)} found")
 
-    print(f"  [entities]     extracting...", end="", flush=True)
+    print("  [entities]     extracting...", end="", flush=True)
     entities = extract_entities(transcript)
     entities_path = out_dir / "entities.json"
     entities_path.write_text(entities.model_dump_json(indent=2), encoding="utf-8")

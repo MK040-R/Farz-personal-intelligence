@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS commitments (
     text            TEXT        NOT NULL,
     owner           TEXT        NOT NULL,
     due_date        TIMESTAMPTZ,
-    status          TEXT        NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'done', 'cancelled')),
+    status          TEXT        NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved')),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -124,58 +124,66 @@ CREATE TABLE IF NOT EXISTS briefs (
 
 -- topic ↔ segment links
 CREATE TABLE IF NOT EXISTS topic_segment_links (
+    user_id     UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     topic_id    UUID NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
     segment_id  UUID NOT NULL REFERENCES transcript_segments(id) ON DELETE CASCADE,
-    PRIMARY KEY (topic_id, segment_id)
+    PRIMARY KEY (user_id, topic_id, segment_id)
 );
 
 -- commitment ↔ segment links
 CREATE TABLE IF NOT EXISTS commitment_segment_links (
+    user_id         UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     commitment_id   UUID NOT NULL REFERENCES commitments(id) ON DELETE CASCADE,
     segment_id      UUID NOT NULL REFERENCES transcript_segments(id) ON DELETE CASCADE,
-    PRIMARY KEY (commitment_id, segment_id)
+    PRIMARY KEY (user_id, commitment_id, segment_id)
 );
 
 -- entity ↔ segment links
 CREATE TABLE IF NOT EXISTS entity_segment_links (
+    user_id     UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     entity_id   UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
     segment_id  UUID NOT NULL REFERENCES transcript_segments(id) ON DELETE CASCADE,
-    PRIMARY KEY (entity_id, segment_id)
+    PRIMARY KEY (user_id, entity_id, segment_id)
 );
 
 -- topic_arc ↔ conversation links
 CREATE TABLE IF NOT EXISTS topic_arc_conversation_links (
+    user_id          UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     topic_arc_id    UUID NOT NULL REFERENCES topic_arcs(id) ON DELETE CASCADE,
     conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-    PRIMARY KEY (topic_arc_id, conversation_id)
+    PRIMARY KEY (user_id, topic_arc_id, conversation_id)
 );
 
 -- brief ↔ topic_arc links
 CREATE TABLE IF NOT EXISTS brief_topic_arc_links (
+    user_id         UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     brief_id        UUID NOT NULL REFERENCES briefs(id) ON DELETE CASCADE,
     topic_arc_id    UUID NOT NULL REFERENCES topic_arcs(id) ON DELETE CASCADE,
-    PRIMARY KEY (brief_id, topic_arc_id)
+    PRIMARY KEY (user_id, brief_id, topic_arc_id)
 );
 
 -- brief ↔ commitment links
 CREATE TABLE IF NOT EXISTS brief_commitment_links (
+    user_id         UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     brief_id        UUID NOT NULL REFERENCES briefs(id) ON DELETE CASCADE,
     commitment_id   UUID NOT NULL REFERENCES commitments(id) ON DELETE CASCADE,
-    PRIMARY KEY (brief_id, commitment_id)
+    PRIMARY KEY (user_id, brief_id, commitment_id)
 );
 
 -- brief ↔ connection links
 CREATE TABLE IF NOT EXISTS brief_connection_links (
+    user_id         UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     brief_id        UUID NOT NULL REFERENCES briefs(id) ON DELETE CASCADE,
     connection_id   UUID NOT NULL REFERENCES connections(id) ON DELETE CASCADE,
-    PRIMARY KEY (brief_id, connection_id)
+    PRIMARY KEY (user_id, brief_id, connection_id)
 );
 
 -- connection linked items (conversation or topic ids)
 CREATE TABLE IF NOT EXISTS connection_linked_items (
+    user_id         UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     connection_id   UUID NOT NULL REFERENCES connections(id) ON DELETE CASCADE,
     linked_id       UUID NOT NULL,
-    PRIMARY KEY (connection_id, linked_id)
+    PRIMARY KEY (user_id, connection_id, linked_id)
 );
 
 -- ------------------------------------------------------------
@@ -254,6 +262,70 @@ CREATE POLICY "user_isolation" ON briefs
     USING (auth.uid() = user_id)
     WITH CHECK (auth.uid() = user_id);
 
+-- topic_segment_links
+ALTER TABLE topic_segment_links ENABLE ROW LEVEL SECURITY;
+ALTER TABLE topic_segment_links FORCE ROW LEVEL SECURITY;
+CREATE POLICY "user_isolation" ON topic_segment_links
+    FOR ALL
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
+-- commitment_segment_links
+ALTER TABLE commitment_segment_links ENABLE ROW LEVEL SECURITY;
+ALTER TABLE commitment_segment_links FORCE ROW LEVEL SECURITY;
+CREATE POLICY "user_isolation" ON commitment_segment_links
+    FOR ALL
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
+-- entity_segment_links
+ALTER TABLE entity_segment_links ENABLE ROW LEVEL SECURITY;
+ALTER TABLE entity_segment_links FORCE ROW LEVEL SECURITY;
+CREATE POLICY "user_isolation" ON entity_segment_links
+    FOR ALL
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
+-- topic_arc_conversation_links
+ALTER TABLE topic_arc_conversation_links ENABLE ROW LEVEL SECURITY;
+ALTER TABLE topic_arc_conversation_links FORCE ROW LEVEL SECURITY;
+CREATE POLICY "user_isolation" ON topic_arc_conversation_links
+    FOR ALL
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
+-- brief_topic_arc_links
+ALTER TABLE brief_topic_arc_links ENABLE ROW LEVEL SECURITY;
+ALTER TABLE brief_topic_arc_links FORCE ROW LEVEL SECURITY;
+CREATE POLICY "user_isolation" ON brief_topic_arc_links
+    FOR ALL
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
+-- brief_commitment_links
+ALTER TABLE brief_commitment_links ENABLE ROW LEVEL SECURITY;
+ALTER TABLE brief_commitment_links FORCE ROW LEVEL SECURITY;
+CREATE POLICY "user_isolation" ON brief_commitment_links
+    FOR ALL
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
+-- brief_connection_links
+ALTER TABLE brief_connection_links ENABLE ROW LEVEL SECURITY;
+ALTER TABLE brief_connection_links FORCE ROW LEVEL SECURITY;
+CREATE POLICY "user_isolation" ON brief_connection_links
+    FOR ALL
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
+-- connection_linked_items
+ALTER TABLE connection_linked_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE connection_linked_items FORCE ROW LEVEL SECURITY;
+CREATE POLICY "user_isolation" ON connection_linked_items
+    FOR ALL
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
 -- ------------------------------------------------------------
 -- 5. Indexes
 -- ------------------------------------------------------------
@@ -268,6 +340,14 @@ CREATE INDEX ON entities (user_id);
 CREATE INDEX ON topic_arcs (user_id);
 CREATE INDEX ON connections (user_id);
 CREATE INDEX ON briefs (user_id);
+CREATE INDEX ON topic_segment_links (user_id);
+CREATE INDEX ON commitment_segment_links (user_id);
+CREATE INDEX ON entity_segment_links (user_id);
+CREATE INDEX ON topic_arc_conversation_links (user_id);
+CREATE INDEX ON brief_topic_arc_links (user_id);
+CREATE INDEX ON brief_commitment_links (user_id);
+CREATE INDEX ON brief_connection_links (user_id);
+CREATE INDEX ON connection_linked_items (user_id);
 
 -- Foreign key indexes
 CREATE INDEX ON transcript_segments (conversation_id);

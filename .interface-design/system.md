@@ -1,18 +1,18 @@
-# Farz — Interface Design System
+# Farz - Interface Design System
 
-## Direction: "Quiet Intelligence"
+## Direction: "The Private Office"
 
-> A composed, airy workspace for working professionals. Warm off-white background, clean white cards, a single calm blue accent. The feel of a well-organized desk — not a terminal. Nothing fights for attention. The content is the product.
+> A private workspace for serious operators. Dark forest foundations, warm cream text, and one gold accent for signal. Quiet authority, dense clarity, no visual theatrics.
 
 ---
 
 ## Product Context
 
-**Who is this human:** Working professionals (PMs, team leads, founders, cross-functional operators) context-switching between meetings. They open Farz to recall decisions, prepare for the next meeting, track commitments. Smart, busy, information-dense. They don't need handholding.
+**Who this is for:** Working professionals (PMs, team leads, founders, cross-functional operators) who context-switch across meetings and need reliable recall.
 
-**What they must do:** Recall ("what did we decide about X?"), prepare ("what do I need to know before my 2pm?"), track ("what have I committed to?"), discover ("what threads did I miss?").
+**What they must do:** Recover decisions, prepare for upcoming meetings, track commitments, and follow long-running topics without rereading raw transcripts.
 
-**How it should feel:** Light, composed, professional. Like the best B2B SaaS products — Stripe, Linear, Notion, Granola. Not a dev tool. Not a colorful startup. A calm intelligence layer that earns trust through clarity.
+**How it should feel:** Deliberate, trusted, and focused. The interface should read like an executive briefing surface, not a consumer productivity app.
 
 ---
 
@@ -20,146 +20,147 @@
 
 ### Color
 
-Warm off-white base, white surfaces, single calm blue accent.
+Dark forest base, cream ink, single gold accent. Accent is the only chromatic signal.
 
-| Token                    | Value                          | Usage                                                        |
-| ------------------------ | ------------------------------ | ------------------------------------------------------------ |
-| `--bg-base`              | `#F7F6F3`                      | App background (warm off-white — not clinical white)         |
-| `--bg-surface`           | `#FFFFFF`                      | Cards, panels (float on base)                                |
-| `--bg-surface-raised`    | `#F0EFF0`                      | Modals, dropdowns                                            |
-| `--bg-control`           | `#F3F2EF`                      | Inputs, text areas                                           |
-| `--ink-primary`          | `#1C1C27`                      | Primary text (near-black with warm undertone)                |
-| `--ink-secondary`        | `#6B6E7A`                      | Supporting text, labels                                      |
-| `--ink-tertiary`         | `#9B9EA8`                      | Metadata, timestamps                                         |
-| `--ink-muted`            | `#C4C5CB`                      | Disabled, placeholder                                        |
-| `--accent`               | `#4A6CF7`                      | Interactive elements, Arc thread, commitment bars, focus — the only color |
-| `--accent-subtle`        | `#EEF1FE`                      | Accent backgrounds (badges, highlights)                      |
-| `--accent-hover`         | `#3555E8`                      | Hover on accent elements                                     |
-| `--border-standard`      | `rgba(0,0,0,0.08)`             | Default separation                                           |
-| `--border-soft`          | `rgba(0,0,0,0.04)`             | Very subtle grouping                                         |
-| `--border-emphasis`      | `rgba(0,0,0,0.14)`             | Active states, selected rows                                 |
-| `--shadow-card`          | `0 1px 4px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)` | Card depth |
-| `--shadow-raised`        | `0 4px 16px rgba(0,0,0,0.08)` | Modals, hover cards                                          |
-| `--semantic-open`        | `#16A37A`                      | Open commitment/topic status                                 |
-| `--semantic-resolved`    | `#8E9BA8`                      | Resolved state (neutral, not celebratory)                    |
-| `--semantic-destructive` | `#E5484D`                      | Destructive actions                                          |
-
+| Token                    | Value                         | Usage |
+| ------------------------ | ----------------------------- | ----- |
+| `--bg-base`              | `#0A1510`                     | App background; near-black forest canvas |
+| `--bg-surface`           | `#101D17`                     | Primary cards, panels, sidebar surfaces |
+| `--bg-surface-raised`    | `#14231C`                     | Overlays, dropdowns, raised surfaces |
+| `--bg-control`           | `#0E1A14`                     | Inputs, search bars, text areas |
+| `--ink-primary`          | `#F0EDE4`                     | Primary text and headings |
+| `--ink-secondary`        | `#CEC7B8`                     | Secondary labels and helper copy |
+| `--ink-tertiary`         | `#AFA894`                     | Metadata, timestamps, low-emphasis details |
+| `--ink-muted`            | `#7E786A`                     | Disabled text, placeholders |
+| `--accent`               | `#C9A84C`                     | Focus state, links, citations, active controls |
+| `--accent-subtle`        | `rgba(201, 168, 76, 0.16)`    | Subtle accent backgrounds and chips |
+| `--accent-hover`         | `#D6B867`                     | Hover/active variant of accent |
+| `--border-standard`      | `rgba(240, 237, 228, 0.18)`   | Default container separation |
+| `--border-soft`          | `rgba(240, 237, 228, 0.10)`   | Quiet grouping dividers |
+| `--border-emphasis`      | `rgba(201, 168, 76, 0.55)`    | Active/selected outlines |
+| `--shadow-card`          | `none`                        | No shadows; depth comes from borders only |
+| `--shadow-raised`        | `none`                        | No shadows on overlays |
+| `--semantic-open`        | `#C9A84C`                     | Open/attention state (same accent family) |
+| `--semantic-resolved`    | `#9E9888`                     | Resolved/de-emphasized neutral state |
+| `--semantic-destructive` | `#B5AE9C`                     | Destructive actions via neutral contrast + copy/icon |
 
 ### Typography
 
-Inter throughout. Round, readable, the lingua franca of modern professional SaaS.
+Use **Plus Jakarta Sans** for interface language and **JetBrains Mono** for transcript/data surfaces.
 
-| Role                    | Font  | Weight | Size    | Notes                                           |
-| ----------------------- | ----- | ------ | ------- | ----------------------------------------------- |
-| Page headings           | Inter | 700    | 22–28px | Letter-spacing `−0.02em`                        |
-| Card titles             | Inter | 600    | 15px    | Normal tracking                                 |
-| Body                    | Inter | 400    | 14px    | Line height 1.65                                |
-| Labels / section headers| Inter | 500    | 11px    | Uppercase, `0.06em` tracking                    |
-| Data / timestamps       | Inter | 400    | 12px    | Tabular numbers, `--ink-tertiary`               |
-| Transcript              | `ui-monospace` | 400 | 12.5px | `--ink-secondary`, comfortable reading |
-
+| Role                     | Font              | Weight | Size    | Notes |
+| ------------------------ | ----------------- | ------ | ------- | ----- |
+| Page headings            | Plus Jakarta Sans | 700    | 22-28px | Letter spacing `-0.01em` |
+| Card titles              | Plus Jakarta Sans | 600    | 15px    | Tight, compact headings |
+| Body                     | Plus Jakarta Sans | 400    | 14px    | Line height 1.6 |
+| Labels / section headers | Plus Jakarta Sans | 500    | 11px    | Uppercase, `0.06em` tracking |
+| Data / timestamps        | JetBrains Mono    | 400    | 12px    | Tabular style, `--ink-tertiary` |
+| Transcript               | JetBrains Mono    | 400    | 12.5px  | High readability for long text blocks |
 
 ### Depth Strategy
 
-**Subtle shadows on white cards floating on warm-base background.**
+**Borders only. No shadows.**
 
-Light mode earns depth through natural shadow, not color shifting. Cards feel lifted from the page. This is how Stripe, Linear, and Notion do it.
+Depth is established by contrast between surfaces and explicit border hierarchy.
 
-- `--bg-base` is the canvas — warm off-white
-- `--bg-surface` (white) cards sit on the canvas with `--shadow-card`
-- Sidebar is white — same as a card, separated by `--border-standard`
-- Inputs sit slightly inset: `--bg-control` + no shadow
-- No borders competing with shadows — pick one per element
-
+- `--bg-base` anchors the canvas
+- `--bg-surface` and `--bg-surface-raised` layer structure
+- `--border-standard`, `--border-soft`, and `--border-emphasis` define hierarchy
+- Controls rely on border and ink contrast, not glow or shadow
 
 ### Spacing
 
-Base unit: **4px** — but sections are more generous than the old system.
+Base unit: **4px**.
 
-| Scale | Value | Usage                                       |
-| ----- | ----- | ------------------------------------------- |
-| `xs`  | 4px   | Icon gaps, tight inline spacing             |
-| `sm`  | 8px   | Within components (button padding inline)   |
-| `md`  | 16px  | Component padding (cards, inputs)           |
-| `lg`  | 20px  | Between related elements                    |
-| `xl`  | 32px  | Between sections                            |
-| `2xl` | 48px  | Major layout separation                     |
-
+| Scale | Value | Usage |
+| ----- | ----- | ----- |
+| `xs`  | 4px   | Tight inline spacing, icon gaps |
+| `sm`  | 8px   | Small control interiors |
+| `md`  | 16px  | Card and input padding |
+| `lg`  | 20px  | Related content groups |
+| `xl`  | 32px  | Major section separation |
+| `2xl` | 48px  | Page-level breathing room |
 
 ### Border Radius
 
-Friendly and consistent. Not sharp. Not overly bubbly.
+Slightly restrained radius values to keep the surface professional.
 
-| Scale  | Value  | Usage                   |
-| ------ | ------ | ----------------------- |
-| `sm`   | 6px    | Badges, chips           |
-| `md`   | 10px   | Cards, inputs, buttons  |
-| `lg`   | 14px   | Modals, popovers        |
-| `pill` | 999px  | Status pills            |
+| Scale  | Value | Usage |
+| ------ | ----- | ----- |
+| `sm`   | 6px   | Chips, compact badges |
+| `md`   | 10px  | Cards, inputs, buttons |
+| `lg`   | 14px  | Drawers and overlays |
+| `pill` | 999px | Status pills |
 
 ---
 
-## Signature Element — The Arc Thread
+## Signature Element - The Arc Thread
 
-The **Topic Arc** is Farz's core concept: a topic's journey across meetings over time. A thin `--accent` line threads through meeting nodes in chronological order. Makes the product's intelligence visible.
+The **Topic Arc** is the visual signature of Farz. It should read as an evidence trail, not decoration.
 
-- Thread weight: 1.5px
-- Color: `--accent` at 60% opacity between nodes, 100% at active node
-- Node: 10px circle, `--accent` fill, `--bg-surface` inner dot (4px)
-- Applied in: Search results (Topic Arc view)
+- Thread: 1.5px line using `--accent` (reduced opacity between points)
+- Active node: full `--accent`
+- Inactive node: `--bg-surface` fill with `--border-standard` ring
+- Usage: Search result timelines and any arc-based context view
 
 ---
 
 ## Navigation
 
-Clean white sidebar. Calm and contained.
+Dark surface sidebar, restrained contrast, precise active state.
 
-- Background: `--bg-surface` (white) with `--shadow-card` on right edge
+- Background: `--bg-surface`
 - Width: 220px
-- Active state: `--accent` text color, `--accent-subtle` background, no bars or indicators
-- Nav item font: Inter 500 14px, `--ink-secondary` default, `--ink-primary` hover
-- Logo: Inter 700, `--ink-primary` — no color tricks
+- Active item: `--accent` text + `--accent-subtle` fill + `--border-emphasis`
+- Default item: `--ink-secondary`; hover to `--ink-primary`
+- Logo: Plus Jakarta Sans 700, `--ink-primary`
 
-Nav items: Dashboard, Search, Meetings, Commitments, Insights
+Primary nav: Dashboard, Search, Meetings, Commitments, Insights.
 
 ---
 
 ## Key Component Patterns
 
 ### Meeting Card
-- Surface: `--bg-surface`, shadow: `--shadow-card`, radius: `md`
-- Title: `--ink-primary`, Inter 600, 15px
-- Meta line (date, duration, participants): `--ink-tertiary`, 12px
-- "Brief ready" badge: `--accent` background, white text, `pill` radius
-- Topic tags: `--accent-subtle` background, `--accent` text, `sm` radius
-- Last session teaser: `--ink-secondary`, 13px italic
+
+- Surface: `--bg-surface`, `1px` `--border-standard`, radius `md`
+- Title: `--ink-primary`, Plus Jakarta Sans 600, 15px
+- Metadata: `--ink-tertiary`, JetBrains Mono 12px
+- "Brief ready" chip: `--accent-subtle` background, `--accent` text, `pill` radius
+- Topic chips: `--accent-subtle` + `--accent`, no additional colors
 
 ### Commitment Item
-- Left accent bar: 3px `--accent`, rounded
-- Extracted text: `--ink-primary`, 14px
-- Attribution + date: `--ink-tertiary`, 12px
-- Status badge: `pill` shape, `--semantic-open` or `--semantic-resolved`
+
+- Left rail: 3px `--accent`
+- Commitment text: `--ink-primary`, 14px
+- Attribution/date: `--ink-tertiary`, JetBrains Mono 12px
+- Status states:
+  - open uses `--semantic-open`
+  - resolved uses `--semantic-resolved`
+  - destructive actions use neutral `--semantic-destructive` plus explicit copy/icon
 
 ### Search / Topic Arc Result
-- Arc thread connects meeting nodes (see Signature Element)
-- ArcPoint cards: `--bg-surface` with `--shadow-card`, 20px padding
-- Source meeting citation: `--ink-tertiary`, 12px
-- Jump-to-clip link: `--accent` color on hover
-- Status note: soft badge at bottom
+
+- Arc thread and nodes follow signature element spec
+- Arc point container: `--bg-surface`, `1px` `--border-standard`, 20px padding
+- Citation line: `--ink-tertiary`, JetBrains Mono 12px
+- Jump links and focus states: `--accent` / `--accent-hover`
+- Status note: bordered block with `--accent-subtle` fill
 
 ### Pre-Meeting Brief
-- Hero card: `--bg-surface`, `--shadow-card`, 3px `--accent` top border
-- Sections: Last session summary, Commitments, Connections, Suggested agenda
-- Each section separated by generous whitespace (32px) + `--border-soft` line
+
+- Hero section: `--bg-surface`, `1px` `--border-emphasis`, top edge accent allowed
+- Section separators: `--border-soft` with generous vertical spacing
+- Agenda and commitment blocks: compact structure, no ornamental styling
 
 ---
 
 ## What This Is Not
 
-- No dark backgrounds
-- No harsh black text (use `--ink-primary` `#1C1C27`, not `#000000`)
-- No multiple accent colors
-- No decorative gradients
-- No dense layouts — every section has breathing room
-- No monospace for non-data content (transcripts and timestamps only)
-- No borders competing with shadows — choose one elevation method per element
+- No light-mode surfaces or white-first visual hierarchy
+- No multi-accent palette
+- No shadow-led elevation
+- No gradients, glow effects, or decorative flourishes
+- No saturated semantic green/red system
+- No loose, playful, or consumer-style spacing patterns
+- No monospace for non-data/non-transcript content

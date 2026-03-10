@@ -5,9 +5,7 @@ Uses ALWAYS_EAGER mode: tasks run synchronously in the calling process.
 These tests verify task logic and input validation in isolation.
 """
 import pytest
-
 from tasks import failing_task, process_transcript, slow_task
-
 
 # ---------------------------------------------------------------------------
 # process_transcript

@@ -1,5 +1,5 @@
+
 from pydantic import BaseModel, Field
-from typing import Optional
 
 
 class Topic(BaseModel):
@@ -16,7 +16,7 @@ class TopicList(BaseModel):
 class Commitment(BaseModel):
     text: str = Field(description="Exact commitment text, as stated or closely paraphrased")
     owner: str = Field(description="Person who made the commitment")
-    due_date: Optional[str] = Field(default=None, description="Due date if mentioned, ISO format")
+    due_date: str | None = Field(default=None, description="Due date if mentioned, ISO format")
     status: str = Field(default="open", description="open or resolved")
 
 
