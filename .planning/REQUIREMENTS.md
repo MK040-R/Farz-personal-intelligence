@@ -92,23 +92,23 @@ Deferred — not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FRONT-01 | Phase 1 | Pending |
-| FRONT-02 | Phase 1 | Pending |
-| FRONT-03 | Phase 1 | Pending |
-| FRONT-04 | Phase 1 | Pending |
-| FRONT-05 | Phase 1 | Pending |
-| FRONT-06 | Phase 1 | Pending |
-| TARC-01 | Phase 2 | Pending |
-| TARC-02 | Phase 2 | Pending |
-| CONN-01 | Phase 3 | Pending |
-| CONN-02 | Phase 3 | Pending |
-| BRIEF-01 | Phase 4 | Pending |
-| BRIEF-02 | Phase 4 | Pending |
-| BRIEF-03 | Phase 4 | Pending |
-| CMMT-01 | Phase 2 | Pending |
-| CMMT-02 | Phase 2 | Pending |
-| CAL-01 | Phase 4 | Pending |
-| CAL-02 | Phase 4 | Pending |
+| FRONT-01 | Phase 1 — Frontend Web App | Pending |
+| FRONT-02 | Phase 1 — Frontend Web App | Pending |
+| FRONT-03 | Phase 1 — Frontend Web App | Pending |
+| FRONT-04 | Phase 1 — Frontend Web App | Pending |
+| FRONT-05 | Phase 1 — Frontend Web App | Pending |
+| FRONT-06 | Phase 1 — Frontend Web App | Pending |
+| TARC-01 | Phase 2 — Topic Arcs and Commitment Tracker | Pending |
+| TARC-02 | Phase 2 — Topic Arcs and Commitment Tracker | Pending |
+| CMMT-01 | Phase 2 — Topic Arcs and Commitment Tracker | Pending |
+| CMMT-02 | Phase 2 — Topic Arcs and Commitment Tracker | Pending |
+| CONN-01 | Phase 3 — Connection Graph | Pending |
+| CONN-02 | Phase 3 — Connection Graph | Pending |
+| BRIEF-01 | Phase 4 — Calendar Sync and Pre-Meeting Briefs | Pending |
+| BRIEF-02 | Phase 4 — Calendar Sync and Pre-Meeting Briefs | Pending |
+| BRIEF-03 | Phase 4 — Calendar Sync and Pre-Meeting Briefs | Pending |
+| CAL-01 | Phase 4 — Calendar Sync and Pre-Meeting Briefs | Pending |
+| CAL-02 | Phase 4 — Calendar Sync and Pre-Meeting Briefs | Pending |
 
 **Coverage:**
 - v1 requirements: 17 total
@@ -117,4 +117,4 @@ Deferred — not in current roadmap.
 
 ---
 *Requirements defined: 2026-03-11*
-*Last updated: 2026-03-11 after initial definition*
+*Last updated: 2026-03-11 after roadmap creation*
