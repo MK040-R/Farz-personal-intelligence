@@ -24,7 +24,9 @@ Read these before writing any code — they are the source of truth for all deci
 | `PROGRESS.md` | Append-only milestone log | Before/after every milestone |
 | `POST_MVP_HARDENING_PLAN.md` | Post-MVP pilot hardening milestones and execution rules | Before post-MVP implementation |
 | `spikes/PHASE_0A_SUMMARY.md` | QA summary of all 5 spikes — go/no-go decisions, bugs found and fixed | Before Phase 0 build |
-| `Later stages/farz-tech-requirements-full.md` | Full architecture for Phase 3+ (AWS, Electron, compliance) | Phase 3+ only |
+| `agent_docs/CODEX_BRIEF.md` | Live Codex/Claude contract for frontend-backend integration | Before frontend/API contract work |
+| `docs/working-notes/PROGRESS.md` | Shared execution log for completed work waves | Update after each completed task |
+| `docs/later-stages/farz-tech-requirements-full.md` | Full architecture for Phase 3+ (AWS, Electron, compliance) | Phase 3+ only |
 | `competitive-analysis.md` | Competitor profiles (Granola, Otter, Fireflies, Notion, Mem0) | Background reading |
 
 ---

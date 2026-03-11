@@ -72,7 +72,6 @@ This file is the entry point for understanding the Farz documentation suite. Rea
 **When to read:** At the start of any post-MVP session before implementing hardening milestones.
 
 ---
-
 ### `competitive-analysis.md` — Competitive Analysis
 **Audience:** Product, engineering (background reading)
 **Purpose:** Static research on Granola, Otter.ai, Fireflies.ai, Notion, and Mem0. Informs product positioning and informed several architectural decisions (e.g., no-bot approach from Granola).
