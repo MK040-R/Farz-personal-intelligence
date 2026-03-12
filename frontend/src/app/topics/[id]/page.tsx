@@ -22,20 +22,21 @@ export default function TopicDetailPage() {
 
   const [topic, setTopic] = useState<TopicDetail | null>(null);
   const [topicArc, setTopicArc] = useState<TopicArc | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loadingTopic, setLoadingTopic] = useState(true);
+  const [loadingArc, setLoadingArc] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [arcError, setArcError] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
 
-    const load = async () => {
-      setLoading(true);
+    const loadTopic = async () => {
+      setLoadingTopic(true);
       setError(null);
       try {
-        const [topicData, arcData] = await Promise.all([getTopic(id), getTopicArc(id)]);
+        const topicData = await getTopic(id);
         if (mounted) {
           setTopic(topicData);
-          setTopicArc(arcData);
         }
       } catch (loadError) {
         if (mounted) {
@@ -43,23 +44,43 @@ export default function TopicDetailPage() {
         }
       } finally {
         if (mounted) {
-          setLoading(false);
+          setLoadingTopic(false);
         }
       }
     };
 
-    void load();
+    const loadArc = async () => {
+      setLoadingArc(true);
+      setArcError(null);
+      try {
+        const arcData = await getTopicArc(id);
+        if (mounted) {
+          setTopicArc(arcData);
+        }
+      } catch (loadError) {
+        if (mounted) {
+          setArcError(loadError instanceof Error ? loadError.message : "Failed to load topic arc");
+        }
+      } finally {
+        if (mounted) {
+          setLoadingArc(false);
+        }
+      }
+    };
+
+    void loadTopic();
+    void loadArc();
 
     return () => {
       mounted = false;
     };
   }, [id]);
 
-  if (loading) {
+  if (loadingTopic) {
     return <section className="card p-4 text-sm text-ink-secondary">Loading topic...</section>;
   }
 
-  if (error || !topic || !topicArc) {
+  if (error || !topic) {
     return (
       <section className="card border border-emphasis bg-accent-subtle p-4 text-sm text-accent">
         {error ?? "Topic not found"}
@@ -89,21 +110,33 @@ export default function TopicDetailPage() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">Topic arc</h2>
-            <p className="mt-1 text-sm text-ink-secondary">{topicArc.summary}</p>
+            <p className="mt-1 text-sm text-ink-secondary">
+              {loadingArc
+                ? "Loading timeline for this topic..."
+                : topicArc?.summary ?? arcError ?? "Topic arc unavailable"}
+            </p>
           </div>
           <div className="text-right text-xs text-ink-tertiary">
-            <p>Status: {topicArc.status}</p>
-            <p>Trend: {topicArc.trend}</p>
-            <p>Meetings: {topicArc.conversation_count}</p>
+            <p>Status: {topicArc?.status ?? "..."}</p>
+            <p>Trend: {topicArc?.trend ?? "..."}</p>
+            <p>Meetings: {topicArc?.conversation_count ?? "..."}</p>
           </div>
         </div>
 
         <div className="mt-3 space-y-3">
-          {topicArc.arc_points.length === 0 && (
+          {loadingArc && (
+            <p className="text-sm text-ink-tertiary">Loading arc points...</p>
+          )}
+
+          {!loadingArc && !topicArc && (
+            <p className="text-sm text-ink-tertiary">{arcError ?? "Topic arc unavailable."}</p>
+          )}
+
+          {!loadingArc && topicArc && topicArc.arc_points.length === 0 && (
             <p className="text-sm text-ink-tertiary">No timeline points available yet.</p>
           )}
 
-          {topicArc.arc_points.map((point) => (
+          {topicArc?.arc_points.map((point) => (
             <article key={`${point.topic_id}-${point.conversation_id}`} className="rounded border border-soft p-3">
               <div className="flex items-start justify-between gap-3">
                 <div>

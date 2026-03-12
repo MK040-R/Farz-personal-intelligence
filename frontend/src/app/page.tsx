@@ -4,10 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import {
-  getCommitments,
   getIndexStats,
   getTodayBriefing,
-  type Commitment,
   type IndexStats,
   type TodayBriefing,
 } from "@/lib/api";
@@ -23,7 +21,6 @@ const kpiCards = [
 export default function DashboardPage() {
   const [briefing, setBriefing] = useState<TodayBriefing | null>(null);
   const [stats, setStats] = useState<IndexStats | null>(null);
-  const [commitments, setCommitments] = useState<Commitment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,15 +31,10 @@ export default function DashboardPage() {
       setLoading(true);
       setError(null);
       try {
-        const [todayData, statsData, commitmentData] = await Promise.all([
-          getTodayBriefing(),
-          getIndexStats(),
-          getCommitments("open"),
-        ]);
+        const [todayData, statsData] = await Promise.all([getTodayBriefing(), getIndexStats()]);
         if (mounted) {
           setBriefing(todayData);
           setStats(statsData);
-          setCommitments(commitmentData);
         }
       } catch (loadError) {
         if (mounted) {
@@ -124,7 +116,7 @@ export default function DashboardPage() {
           </div>
 
           <div className="mt-3 space-y-2">
-            {commitments.slice(0, 4).map((commitment) => (
+            {briefing.open_commitments.slice(0, 4).map((commitment) => (
               <div key={commitment.id} className="rounded border border-soft px-3 py-2">
                 <p className="text-sm text-ink-primary">{commitment.text}</p>
                 <p className="mt-1 text-xs text-ink-tertiary">
@@ -134,7 +126,7 @@ export default function DashboardPage() {
               </div>
             ))}
 
-            {commitments.length === 0 && (
+            {briefing.open_commitments.length === 0 && (
               <p className="text-sm text-ink-tertiary">No open commitments in the current dataset.</p>
             )}
           </div>

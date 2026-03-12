@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from src import llm_client
+from src.cache_utils import bump_user_cache_version
 from src.celery_app import celery_app
 from src.commitment_utils import sanitize_commitment_rows
 from src.database import get_client
@@ -99,6 +100,7 @@ def extract_from_conversation(
             conversation_id,
         )
         db.table("conversations").update({"status": "indexed"}).eq("id", conversation_id).execute()
+        bump_user_cache_version(user_id)
         return {
             "conversation_id": conversation_id,
             "topic_count": 0,
@@ -265,6 +267,7 @@ def extract_from_conversation(
         len(entity_list.entities),
         user_id,
     )
+    bump_user_cache_version(user_id)
 
     return {
         "conversation_id": conversation_id,

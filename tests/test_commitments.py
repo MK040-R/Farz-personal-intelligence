@@ -56,12 +56,17 @@ def _make_list_db(
 ) -> MagicMock:
     commitments_table = MagicMock()
     base_query = commitments_table.select.return_value.eq.return_value.order.return_value
-    base_query.execute.return_value.data = commitments or []
-    base_query.eq.return_value.execute.return_value.data = commitments or []
-    base_query.or_.return_value.execute.return_value.data = commitments or []
-    base_query.ilike.return_value.execute.return_value.data = commitments or []
-    base_query.eq.return_value.ilike.return_value.execute.return_value.data = commitments or []
-    base_query.or_.return_value.ilike.return_value.execute.return_value.data = commitments or []
+    query_variants = [
+        base_query,
+        base_query.eq.return_value,
+        base_query.or_.return_value,
+        base_query.ilike.return_value,
+        base_query.eq.return_value.ilike.return_value,
+        base_query.or_.return_value.ilike.return_value,
+    ]
+    for variant in query_variants:
+        variant.execute.return_value.data = commitments or []
+        variant.range.return_value.execute.return_value.data = commitments or []
 
     conversations_table = MagicMock()
     conversations_table.select.return_value.eq.return_value.in_.return_value.execute.return_value.data = (

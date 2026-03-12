@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from src.api.deps import get_current_user
+from src.cache_utils import build_user_cache_key, get_cached_json, set_cached_json
 from src.calendar_client import CalendarEvent, list_calendar_events
 from src.database import get_client
 from src.drive_client import refresh_access_token
@@ -30,6 +31,7 @@ from src.workers.tasks import schedule_recurring_briefs
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+_TODAY_BRIEFING_CACHE_TTL_SECONDS = 60
 
 _MATCH_WINDOW_SECONDS = 8 * 60 * 60
 _CALENDAR_LINK_LOOKBACK_DAYS = 365
@@ -121,6 +123,44 @@ def _get_google_tokens(db: Any, user_id: str) -> tuple[str, str]:
         )
 
     return str(access_token or ""), refresh_token
+
+
+async def _load_calendar_events_with_refresh(
+    db: Any,
+    user_id: str,
+    access_token: str,
+    refresh_token: str,
+    *,
+    time_min: datetime,
+    time_max: datetime,
+) -> tuple[str, list[CalendarEvent]]:
+    candidate_token = access_token.strip()
+    if candidate_token:
+        try:
+            return candidate_token, await list_calendar_events(
+                candidate_token,
+                time_min=time_min,
+                time_max=time_max,
+            )
+        except PermissionError:
+            logger.info("Stored Google access token expired — refreshing for user=%s", user_id)
+
+    try:
+        refreshed_access_token = await refresh_access_token(refresh_token)
+    except Exception as exc:
+        raise PermissionError("Google Calendar access token refresh failed") from exc
+    (
+        db.table("user_index")
+        .update({"google_access_token": refreshed_access_token})
+        .eq("user_id", user_id)
+        .execute()
+    )
+    events = await list_calendar_events(
+        refreshed_access_token,
+        time_min=time_min,
+        time_max=time_max,
+    )
+    return refreshed_access_token, events
 
 
 def _best_match_event(
@@ -337,45 +377,43 @@ async def get_today(
     user_id: str = current_user["sub"]
     raw_jwt: str = current_user["_raw_jwt"]
     db = get_client(raw_jwt)
-    _, refresh_token = _get_google_tokens(db, user_id)
-
-    try:
-        refreshed_access_token = await refresh_access_token(refresh_token)
-    except Exception as exc:
-        logger.error("Google token refresh failed for user=%s: %s", user_id, type(exc).__name__)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Failed to refresh Google access. Please sign in again.",
-        ) from exc
-
-    (
-        db.table("user_index")
-        .update({"google_access_token": refreshed_access_token})
-        .eq("user_id", user_id)
-        .execute()
-    )
-
     today_start = datetime.combine(date.today(), time.min, tzinfo=UTC)
     today_end = today_start + timedelta(days=2)
-    now = datetime.now(tz=UTC)
+    cache_key = build_user_cache_key(
+        user_id,
+        "today_briefing",
+        {
+            "date": today_start.date().isoformat(),
+        },
+    )
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return TodayBriefing.model_validate(cached)
+
+    access_token, refresh_token = _get_google_tokens(db, user_id)
 
     try:
-        today_events = await list_calendar_events(
-            refreshed_access_token,
+        active_access_token, today_events = await _load_calendar_events_with_refresh(
+            db,
+            user_id,
+            access_token,
+            refresh_token,
             time_min=today_start,
             time_max=today_end,
         )
-    except PermissionError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Google Calendar access denied. Please sign in again.",
-        ) from exc
     except Exception as exc:
+        if isinstance(exc, PermissionError):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Google Calendar access denied. Please sign in again.",
+            ) from exc
         logger.error("Calendar read failed for user=%s: %s", user_id, type(exc).__name__)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Failed to retrieve meetings from Google Calendar.",
         ) from exc
+
+    now = datetime.now(tz=UTC)
 
     sync_start = now - timedelta(days=_CALENDAR_LINK_LOOKBACK_DAYS)
     sync_end = now + timedelta(days=_CALENDAR_LINK_LOOKAHEAD_DAYS)
@@ -403,7 +441,7 @@ async def get_today(
 
             try:
                 sync_events = await list_calendar_events(
-                    refreshed_access_token,
+                    active_access_token,
                     time_min=link_window_start,
                     time_max=link_window_end,
                 )
@@ -467,9 +505,7 @@ async def get_today(
         conv_titles = {c["id"]: c["title"] for c in (convs_result.data or [])}
 
     recent_activity = _load_recent_activity(db, user_id)
-    recent_connections = _load_recent_connections(db, user_id)
-
-    return TodayBriefing(
+    payload = TodayBriefing(
         date=date.today().isoformat(),
         upcoming_meetings=[
             UpcomingMeeting(
@@ -493,5 +529,11 @@ async def get_today(
             for c in commitments
         ],
         recent_activity=recent_activity,
-        recent_connections=recent_connections,
+        recent_connections=[],
     )
+    set_cached_json(
+        cache_key,
+        payload.model_dump(mode="json"),
+        _TODAY_BRIEFING_CACHE_TTL_SECONDS,
+    )
+    return payload

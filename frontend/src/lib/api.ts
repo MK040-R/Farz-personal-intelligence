@@ -528,6 +528,8 @@ export async function getCommitments(
     meeting?: string;
     meetingDateFrom?: string;
     meetingDateTo?: string;
+    limit?: number;
+    offset?: number;
   } = {},
 ): Promise<Commitment[]> {
   const params = new URLSearchParams();
@@ -551,6 +553,12 @@ export async function getCommitments(
   }
   if (options.meetingDateTo?.trim()) {
     params.set("meeting_date_to", options.meetingDateTo.trim());
+  }
+  if (typeof options.limit === "number") {
+    params.set("limit", String(options.limit));
+  }
+  if (typeof options.offset === "number") {
+    params.set("offset", String(options.offset));
   }
   const suffix = params.toString() ? `?${params.toString()}` : "";
   return request<Commitment[]>(`/commitments${suffix}`, { method: "GET" });

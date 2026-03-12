@@ -13,12 +13,19 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from src.api.deps import get_current_user
+from src.cache_utils import (
+    build_user_cache_key,
+    bump_user_cache_version,
+    get_cached_json,
+    set_cached_json,
+)
 from src.database import get_client
 from src.topic_utils import cluster_topic_rows
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+_COMMITMENTS_CACHE_TTL_SECONDS = 60
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +159,32 @@ def list_commitments(
             detail="meeting_date_from must be before or equal to meeting_date_to",
         )
 
+    effective_topic = (topic or "").strip().lower()
+    effective_meeting = (meeting or "").strip().lower()
+    can_apply_window_in_db = (
+        not effective_topic
+        and not effective_meeting
+        and meeting_date_from_parsed is None
+        and meeting_date_to_parsed is None
+    )
+    cache_key = build_user_cache_key(
+        user_id,
+        "commitments_list",
+        {
+            "status": effective_filter,
+            "assignee": effective_assignee,
+            "topic": effective_topic,
+            "meeting": effective_meeting,
+            "meeting_date_from": meeting_date_from,
+            "meeting_date_to": meeting_date_to,
+            "limit": limit,
+            "offset": offset,
+        },
+    )
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return [CommitmentOut.model_validate(item) for item in cached]
+
     query = (
         db.table("commitments")
         .select("id, text, owner, due_date, status, conversation_id")
@@ -170,6 +203,8 @@ def list_commitments(
                 query = query.ilike("owner", f"%{email}%")
         else:
             query = query.ilike("owner", f"%{effective_assignee}%")
+    if can_apply_window_in_db:
+        query = query.range(offset, offset + limit - 1)
 
     result = query.execute()
     commitments = result.data or []
@@ -201,9 +236,6 @@ def list_commitments(
     topic_labels_by_conversation = _build_topic_labels_by_conversation(
         topic_rows, conversation_dates
     )
-
-    effective_topic = (topic or "").strip().lower()
-    effective_meeting = (meeting or "").strip().lower()
 
     filtered_rows: list[dict[str, Any]] = []
     for commitment in commitments:
@@ -240,9 +272,11 @@ def list_commitments(
             }
         )
 
-    visible_rows = filtered_rows[offset : offset + limit]
+    visible_rows = (
+        filtered_rows if can_apply_window_in_db else filtered_rows[offset : offset + limit]
+    )
 
-    return [
+    payload = [
         CommitmentOut(
             id=c["id"],
             text=c["text"],
@@ -256,6 +290,12 @@ def list_commitments(
         )
         for c in visible_rows
     ]
+    set_cached_json(
+        cache_key,
+        [item.model_dump(mode="json") for item in payload],
+        _COMMITMENTS_CACHE_TTL_SECONDS,
+    )
+    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -370,6 +410,7 @@ def update_commitment(
         body.status,
         user_id,
     )
+    bump_user_cache_version(user_id)
 
     return CommitmentOut(
         id=updated["id"],

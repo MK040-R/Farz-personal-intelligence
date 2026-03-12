@@ -175,28 +175,6 @@ class TestCalendarTodayEndpoint:
                     "status": "indexed",
                 }
             ],
-            connection_rows=[
-                {
-                    "id": "conn-1",
-                    "label": "Roadmap continuity",
-                    "summary": "The roadmap planning thread spans multiple meetings.",
-                    "linked_type": "conversation",
-                    "created_at": now.isoformat(),
-                }
-            ],
-            connection_links=[
-                {
-                    "connection_id": "conn-1",
-                    "linked_id": "conv-2",
-                }
-            ],
-            related_conversation_rows=[
-                {
-                    "id": "conv-2",
-                    "title": "Design Review",
-                    "meeting_date": now.isoformat(),
-                }
-            ],
         )
 
         with (
@@ -221,11 +199,7 @@ class TestCalendarTodayEndpoint:
         assert payload["open_commitments"][0]["conversation_title"] == "Roadmap Review"
         assert payload["open_commitments"][0]["text"] == "Ship Phase 4 sync"
         assert payload["recent_activity"][0]["conversation_id"] == "conv-2"
-        assert payload["recent_connections"][0]["id"] == "conn-1"
-        assert (
-            payload["recent_connections"][0]["related_conversations"][0]["conversation_id"]
-            == "conv-2"
-        )
+        assert payload["recent_connections"] == []
 
     def test_links_unlinked_conversations_to_calendar_event(self) -> None:
         meeting_time = datetime(2026, 3, 10, 10, 0, tzinfo=UTC)
