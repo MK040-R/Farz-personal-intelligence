@@ -2,19 +2,19 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-11)
+See: .planning/PROJECT.md (updated 2026-03-12)
 
 **Core value:** A working professional can ask "What did we decide about X?" and get an accurate, cited answer across all their past meetings — without doing anything manually.
-**Current focus:** MVP closure and next-phase planning
+**Current focus:** MVP stabilization, with stored topic-cluster deployment and recluster verification as the active workstream
 
 ## Current Position
 
-Phase: 5 of 5 (Personal Context Dashboard)
-Plan: 2 of 2 in current phase
-Status: Complete
-Last activity: 2026-03-11 — Phase 5 plans 05-01/05-02 completed. `/calendar/today` now includes recent indexed activity and recent connections (with related meeting refs), and `/today` now renders all dashboard sections with deep links to meeting detail. Validation: `ruff check src tests`, `mypy src tests`, `pytest -q` (97 passed, 7 skipped), `npm run lint`, `npm run build`.
+Phase: Post-Phase 5 stabilization
+Plan: Active follow-up workstreams (MVP quality + pilot readiness)
+Status: In progress
+Last activity: 2026-03-12 — implemented the durable topic-intelligence batch locally: stored `topic_clusters`, write-time semantic merge, background-topic filtering, and a per-user recluster worker/route. Next step is deploy + run recluster + production QA.
 
-Progress: [██████████] 100%
+Progress: [██████████] 100% core phases complete; stabilization work active
 
 ## Performance Metrics
 
@@ -62,10 +62,19 @@ Recent decisions affecting current work:
 - [UI]: Meeting detail now exposes latest brief links; dedicated brief page renders generated content and citation transcript snippets.
 - [API]: `/calendar/today` now returns four dashboard feeds: `upcoming_meetings`, `open_commitments`, `recent_activity`, and `recent_connections`.
 - [UI]: `/today` now renders complete dashboard sections with deep links into `/meetings/{id}` for activity, commitments, and connection context.
+- [UI]: Design system has shifted from `Private Office` to `Insightful Dashboard`: light workspace, dark navigation rail, Inter typography, stronger card depth.
+- [Perf]: Read-heavy endpoints now use short user-scoped caching and dashboard no longer overfetches commitments; topic detail loads arc separately from core detail.
+- [Arch]: Topic intelligence now uses a durable write-time model: `topic_clusters` are canonical, `topics.cluster_id` / `topic_arcs.cluster_id` persist membership, and semantic merge is allowed only during ingestion/backfill through `src/llm_client.py`.
+- [API]: `POST /topics/recluster` now exists as a per-user trigger for rebuilding stored topic clusters and arcs for already indexed meetings.
+- [Product]: Background/admin/introductory topics are now filtered before insert, and topic browse surfaces default to recurring clusters while singleton topics remain searchable.
+- [Product]: Despite phase completion, Farz remains in MVP cleanup mode; post-MVP hardening is deferred until topic quality and remaining pilot-critical UX issues are acceptable.
 
 ### Pending Todos
 
-- Define post-MVP roadmap priorities (v2 integrations, infra scaling, and evaluation framework)
+- Deploy migration `007_topic_clusters.sql` and the stored-cluster API/worker changes
+- Trigger and validate per-user topic recluster/backfill in production
+- Run production QA on Search, Topics, Dashboard, Commitments, and meeting detail against stored clusters
+- Resume post-MVP hardening roadmap after MVP topic quality is acceptable
 
 ### Blockers/Concerns
 
@@ -74,6 +83,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-11
-Stopped at: MVP execution roadmap complete (Phases 1–5 all validated).
+Last session: 2026-03-12
+Stopped at: Durable topic-intelligence batch implemented locally; next step is deploy + per-user recluster + production QA.
 Resume file: None

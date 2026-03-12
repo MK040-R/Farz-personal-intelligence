@@ -1,7 +1,7 @@
 # Farz — Build Progress
 
 > This document is written for non-technical readers. It is updated automatically after every completed task.
-> Last updated: 2026-03-12 (visual refresh work in progress)
+> Last updated: 2026-03-12 (durable topic intelligence implemented locally; deploy + recluster next)
 
 ---
 
@@ -22,7 +22,7 @@ Building a software product from scratch happens in stages, like constructing a 
 | **Phase 1 — First Working Product** | Putting up walls and a roof | The first version users can actually interact with — import past meetings, get AI summaries, search across meetings |
 | **Phase 2 — Full Product** | Interior design, finishing, furniture | The complete dashboard — topic timelines, pre-meeting briefs, commitment tracker, cross-meeting connections |
 
-**Phases 0, 1, 2, 3, 4, and 5 are complete.** Current execution focus is **post-MVP planning and hardening**.
+**Phases 0, 1, 2, 3, 4, and 5 are complete.** Current execution focus is **MVP topic intelligence cleanup**, with the stored cluster model implemented locally and awaiting deployment + per-user backfill.
 
 ---
 
@@ -637,3 +637,55 @@ After the frontend engineer (Codex) reviewed the backend, four issues were found
 - Kept Tailwind wired through CSS variables (`bg-base`, `ink-primary`, `accent`, borders) and verified there are no hard-coded color values in the frontend TypeScript.
 - Added a dark saturated navigation rail and aligned the global font implementation to Inter while keeping all route/data behavior unchanged.
 - Confirmed via `npm run lint` and `npm run build` that the frontend still passes validation with the new styling.
+
+---
+
+## 2026-03-12 — Read-path latency reduction
+
+**Goal:** Improve perceived speed on the most-used screens without changing product behavior or privacy constraints.
+
+- Added a user-scoped read cache layer for slow dashboard and browse endpoints (`/calendar/today`, `/index/stats`, `/topics`, `/topics/{id}`, `/topics/{id}/arc`, `/entities`, `/commitments`).
+- Removed unnecessary dashboard overfetch so the home screen no longer makes a second commitments request just to show open items already present in the briefing payload.
+- Simplified the calendar read path so `GET /calendar/today` does not refresh Google tokens on every request and no longer performs unnecessary connection hydration on the hot path.
+- Changed topic detail loading so the page can render core topic content first and load the arc separately, improving perceived responsiveness.
+- Deployed the performance batch to production and confirmed the application feels materially faster, with additional optimization work deferred for later.
+
+### Validation
+
+- `pytest -q` ✅ (**98 passed, 7 skipped**)
+- `mypy src/ --ignore-missing-imports` ✅
+- `ruff check . && ruff format --check .` ✅
+- `frontend: npm run lint && npm run build` ✅
+
+### What comes next
+
+- **MVP topic intelligence cleanup**
+  - extract fewer, more stable recurring topics
+  - suppress or hide one-off noise by default
+  - strengthen topic merging so arcs reflect real workstreams instead of fragmented meeting remarks
+
+---
+
+## 2026-03-12 — Durable topic intelligence groundwork
+
+**Goal:** Replace noisy read-time topic grouping with a durable write-time topic model that produces stable recurring workstreams across meetings.
+
+- Added migration `007_topic_clusters.sql`, creating `topic_clusters` and adding `cluster_id` to both `topics` and `topic_arcs` so Farz has a stored canonical topic layer instead of recomputing clusters on every read.
+- Extended topic extraction in `src/llm_client.py` with an `is_background` flag and a stricter prompt so meeting setup chatter, administrative remarks, and other low-signal material are filtered before insert.
+- Moved semantic merge to ingestion/backfill time only: new topics now try lexical matching first, then a bounded LLM merge check routed through `src/llm_client.py`, with no LLM calls on any read route.
+- Added a per-user recluster path (`POST /topics/recluster` + worker task) that can rebuild stored topic clusters and topic arcs for already indexed meetings using the same write-time logic.
+- Reworked `/topics`, `/topics/{id}`, `/topics/{id}/arc`, dashboard topic counts, search topic cards, and meeting-detail topic links to use stored cluster identities instead of read-time row grouping.
+- Updated the UI to hide singleton topics by default while still keeping them searchable and available under a small `Emerging topics` section.
+
+### Validation
+
+- `pytest -q` ✅ (**104 passed, 7 skipped**)
+- `mypy src/ --ignore-missing-imports` ✅
+- `ruff check . && ruff format --check .` ✅
+- `frontend: npm run lint && npm run build` ✅
+
+### What comes next
+
+- Deploy the API + worker changes and run migration `007_topic_clusters.sql`
+- Trigger `POST /topics/recluster` for the current user so existing meetings are regrouped under stored clusters
+- Re-run production QA on Search, Topics, Dashboard, Commitments, and meeting detail to verify the live topic layer is materially cleaner

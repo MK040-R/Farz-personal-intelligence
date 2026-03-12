@@ -43,9 +43,10 @@ A working professional can ask "What did we decide about X?" and get an accurate
 
 ### Active
 
-<!-- MVP v1 execution requirements complete -->
-
-- [ ] Post-MVP roadmap definition (v2 integrations, infra scaling, evaluation framework)
+- [ ] Deploy durable topic-cluster batch (migration `007_topic_clusters.sql`, API, worker)
+- [ ] Trigger historical topic recluster / backfill for already indexed meetings
+- [ ] Production QA of Search/Topics/Dashboard against stored clusters
+- [ ] Post-MVP roadmap definition (v2 integrations, infra scaling, evaluation framework) after MVP topic quality is acceptable
 
 ### Out of Scope
 
@@ -61,9 +62,9 @@ A working professional can ask "What did we decide about X?" and get an accurate
 
 ## Context
 
-**Current state (March 2026):** Phase 0a spikes complete (all CONDITIONAL GO), Phase 0 foundation complete, and execution Phases 1–5 complete. Full QA gate is green at 97 passed / 7 skipped. Next focus is post-MVP planning.
+**Current state (March 2026):** Phase 0a spikes complete (all CONDITIONAL GO), Phase 0 foundation complete, and execution Phases 1–5 complete. Follow-up stabilization work has also been deployed: `Insightful Dashboard` visual refresh and read-path latency reduction. The next stabilization batch is now implemented locally: durable stored topic clusters with write-time merge and per-user recluster support. Current focus is deployment, backfill, and production verification of that topic-intelligence layer before broader pilot hardening.
 
-**Backend is complete through Phase 4.** 17 tables (9 core + 8 junction), all with FORCE RLS. Full Celery pipeline: ingest → extract → embed + recurring brief scheduling/generation. FastAPI includes topic arc, commitment tracker, live connection graph, live calendar sync, and brief retrieval APIs. Current QA gate is fully green (`ruff`, `mypy`, `pytest`, frontend lint/build). Deployed on Render.com.
+**Backend is complete through Phase 5.** 17 tables (9 core + 8 junction), all with FORCE RLS, and the next migration adds a stored canonical topic layer (`topic_clusters`, `topics.cluster_id`, `topic_arcs.cluster_id`). Full Celery pipeline: ingest → extract → embed + recurring brief scheduling/generation, now extended with per-user topic reclustering. FastAPI includes topic arc, commitment tracker, live connection graph, live calendar sync, brief retrieval APIs, dashboard aggregation, and the new `POST /topics/recluster` backfill trigger. Current stabilization gate is green (`pytest -q` 104 passed / 7 skipped, `mypy`, `ruff`, frontend lint/build). Deployed on Render.com with short read-cache optimization on the heaviest endpoints; stored topic clusters are implemented locally and awaiting deploy.
 
 **Tech environment:** Python 3.13 + FastAPI + Pydantic v2, Supabase PostgreSQL 16 + pgvector, Upstash Redis (Celery broker + cache), Celery 5.4.0, Claude via instructor, OpenAI embeddings, Deepgram Nova-3.
 
@@ -71,6 +72,7 @@ A working professional can ask "What did we decide about X?" and get an accurate
 - `process_transcript` in `src/workers/tasks.py` remains a legacy placeholder; `generate_brief` is now implemented for Phase 4
 - No pagination on list endpoints (acceptable for MVP user count)
 - No pgvector ANN index yet (ivfflat/hnsw) — full scan acceptable for MVP
+- Stored topic clusters, background-topic filtering, and write-time merge are now implemented locally; remaining risk is deployment/backfill quality, not design direction
 
 **User:** Murali, non-technical founder. Building for internal testing first (solo + first engineer hire), ~50 meetings indexed, before any external users. No DPA required for MVP phase.
 
@@ -99,4 +101,4 @@ A working professional can ask "What did we decide about X?" and get an accurate
 | Google Drive as transcript source (not Google Meet API) | Meet API lacks diarization; Drive has full recordings | ✓ Good |
 
 ---
-*Last updated: 2026-03-11 after Phase 5 closure (dashboard complete)*
+*Last updated: 2026-03-12 after durable topic-cluster implementation (local) — deploy + recluster + production QA next*

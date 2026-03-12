@@ -2,7 +2,7 @@
 
 ## Overview
 
-The backend intelligence pipeline is fully built (Phase 0a, 0, Phase 1 Waves 1-3). This roadmap tracked user-surface delivery in five phases: frontend web app, topic arc/commitment surfaces, connection graph, calendar-driven recurring briefs, and the personal context dashboard. All five execution phases are now complete.
+The backend intelligence pipeline and the five user-surface execution phases are complete. Current work is no longer net-new phase delivery; it is MVP stabilization on top of the shipped product: visual polish, read-path performance, and topic-intelligence quality before broader pilot rollout. The durable topic-cluster implementation is now complete locally and awaiting deploy + backfill verification.
 
 ## Phases
 
@@ -115,6 +115,23 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 4. Calendar Sync and Pre-Meeting Briefs | 4/4 | Complete | 2026-03-11 |
 | 5. Personal Context Dashboard | 2/2 | Complete | 2026-03-11 |
 
+## Active Follow-up Tracks (Post-Phase 5)
+
+- [x] Visual refresh — deployed `Insightful Dashboard` styling (light workspace, dark navigation rail, stronger card hierarchy)
+- [x] Read-path latency reduction — deployed user-scoped caching and frontend overfetch reduction on the slowest views
+- [ ] Topic intelligence cleanup — current active workstream
+  - Implemented locally:
+    - stored `topic_clusters` canonical layer with `topics.cluster_id` and `topic_arcs.cluster_id`
+    - background-topic filtering during extraction
+    - ingestion-time lexical-first + bounded LLM semantic merge through `src/llm_client.py`
+    - per-user `POST /topics/recluster` worker path for historical backfill
+    - cluster-backed `/topics`, topic detail, topic arc, dashboard counts, and search/topic linking
+  - Deployment gate still pending:
+    - run migration `007_topic_clusters.sql`
+    - deploy API + worker changes
+    - trigger per-user recluster
+    - verify production Search/Topics quality against stored clusters
+
 ## Quality Gate
 
 - 2026-03-11 milestone validation (before Phase 4 planning):
@@ -156,4 +173,16 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
   - `ruff check src tests` ✅
   - `mypy src tests` ✅
   - `pytest -q` ✅ (97 passed, 7 skipped)
+  - `frontend: npm run lint && npm run build` ✅
+- 2026-03-12 deployed visual refresh validation:
+  - `frontend: npm run lint && npm run build` ✅
+- 2026-03-12 deployed read-path performance validation:
+  - `pytest -q` ✅ (98 passed, 7 skipped)
+  - `mypy src/ --ignore-missing-imports` ✅
+  - `ruff check . && ruff format --check .` ✅
+  - `frontend: npm run lint && npm run build` ✅
+- 2026-03-12 durable topic-intelligence validation (local, pre-deploy):
+  - `pytest -q` ✅ (104 passed, 7 skipped)
+  - `mypy src/ --ignore-missing-imports` ✅
+  - `ruff check . && ruff format --check .` ✅
   - `frontend: npm run lint && npm run build` ✅
