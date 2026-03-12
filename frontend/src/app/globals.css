@@ -1,31 +1,38 @@
-@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap");
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --font-plus-jakarta: "Plus Jakarta Sans";
+  --font-plus-jakarta: "Inter";
   --font-jetbrains-mono: "JetBrains Mono";
-  --bg-base: #0a1510;
-  --bg-surface: #101d17;
-  --bg-surface-raised: #14231c;
-  --bg-control: #0e1a14;
-  --ink-primary: #f0ede4;
-  --ink-secondary: #cec7b8;
-  --ink-tertiary: #afa894;
-  --ink-muted: #7e786a;
-  --accent: #c9a84c;
-  --accent-subtle: rgba(201, 168, 76, 0.16);
-  --accent-hover: #d6b867;
-  --border-standard: rgba(240, 237, 228, 0.18);
-  --border-soft: rgba(240, 237, 228, 0.1);
-  --border-emphasis: rgba(201, 168, 76, 0.55);
-  --shadow-card: none;
-  --shadow-raised: none;
-  --semantic-open: #c9a84c;
-  --semantic-resolved: #9e9888;
-  --semantic-destructive: #b5ae9c;
+
+  /* Light mint / analytics dashboard palette */
+  --bg-base: #f3f8ff;
+  --bg-surface: #ffffff;
+  --bg-surface-raised: #f7faff;
+  --bg-control: #eef3ff;
+
+  --ink-primary: #041021;
+  --ink-secondary: #4b5565;
+  --ink-tertiary: #6b7280;
+  --ink-muted: #9ca3af;
+
+  --accent: #00c27a;
+  --accent-subtle: rgba(0, 194, 122, 0.12);
+  --accent-hover: #02b16f;
+
+  --border-standard: rgba(15, 23, 42, 0.08);
+  --border-soft: rgba(15, 23, 42, 0.04);
+  --border-emphasis: rgba(0, 194, 122, 0.55);
+
+  --shadow-card: 0 18px 45px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.04);
+  --shadow-raised: 0 24px 60px rgba(15, 23, 42, 0.16);
+
+  --semantic-open: #f59e0b;
+  --semantic-resolved: #10b981;
+  --semantic-destructive: #ef4444;
 }
 
 * {
@@ -36,7 +43,9 @@ html,
 body {
   margin: 0;
   padding: 0;
-  background: var(--bg-base);
+  background:
+    radial-gradient(circle at top left, rgba(0, 194, 122, 0.1) 0%, rgba(0, 194, 122, 0) 28%),
+    linear-gradient(180deg, #f7fbff 0%, #eff5ff 100%);
   color: var(--ink-primary);
   font-family: var(--font-plus-jakarta), system-ui, sans-serif;
   min-height: 100%;
@@ -55,13 +64,14 @@ select {
 }
 
 ::selection {
-  background: rgba(201, 168, 76, 0.28);
+  background: rgba(0, 194, 122, 0.18);
 }
 
 .card {
-  border: 1px solid var(--border-standard);
+  border: 1px solid var(--border-soft);
   background: var(--bg-surface);
-  border-radius: 10px;
+  border-radius: 18px;
+  box-shadow: var(--shadow-card);
 }
 
 .muted {
@@ -70,4 +80,60 @@ select {
 
 .mono {
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+}
+
+.metric-card {
+  border: 1px solid var(--border-soft);
+  background: var(--bg-surface);
+  border-radius: 18px;
+  box-shadow: var(--shadow-card);
+}
+
+.sidebar-shell {
+  background:
+    linear-gradient(180deg, rgba(3, 17, 38, 0.98) 0%, rgba(6, 36, 60, 0.98) 100%);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 24px 0 50px rgba(4, 16, 33, 0.16);
+  color: rgba(255, 255, 255, 0.84);
+}
+
+.sidebar-logo {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 18px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.sidebar-nav-link {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.72);
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.sidebar-nav-link:hover {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.96);
+  transform: translateX(1px);
+}
+
+.sidebar-nav-link--active {
+  border-color: rgba(0, 194, 122, 0.36);
+  background: linear-gradient(180deg, rgba(0, 194, 122, 1) 0%, rgba(19, 214, 145, 1) 100%);
+  box-shadow:
+    0 16px 30px rgba(0, 194, 122, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  color: #041021;
+}
+
+.sidebar-panel {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 18px;
+  color: rgba(255, 255, 255, 0.64);
 }

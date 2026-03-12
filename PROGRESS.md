@@ -1,7 +1,7 @@
 # Farz — Build Progress
 
 > This document is written for non-technical readers. It is updated automatically after every completed task.
-> Last updated: 2026-03-11 (Phase 5 complete: personal context dashboard delivered)
+> Last updated: 2026-03-12 (visual refresh work in progress)
 
 ---
 
@@ -625,3 +625,15 @@ After the frontend engineer (Codex) reviewed the backend, four issues were found
 
 - ✅ **Phase 5 complete (2/2 plans).**
 - ✅ MVP execution roadmap complete across Phases 1–5.
+
+---
+
+## 2026-03-12 — Frontend visual refresh (Insightful Dashboard)
+
+**Goal:** Align the Farz web app’s visual presentation with a lighter, analytics-style dashboard while keeping all routing, data flow, and feature logic unchanged.
+
+- Updated the interface design system to the new **“Insightful Dashboard”** direction, defining a light mint/blue base, deep navy ink, and a vivid green accent while preserving all existing token names.
+- Reimplemented the global CSS token layer in `frontend/src/app/globals.css` to match the new palette, shadows, and card radii so existing components pick up the new look automatically.
+- Kept Tailwind wired through CSS variables (`bg-base`, `ink-primary`, `accent`, borders) and verified there are no hard-coded color values in the frontend TypeScript.
+- Added a dark saturated navigation rail and aligned the global font implementation to Inter while keeping all route/data behavior unchanged.
+- Confirmed via `npm run lint` and `npm run build` that the frontend still passes validation with the new styling.
