@@ -9,9 +9,11 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from src.api.deps import get_current_user
+from src.cache_utils import build_user_cache_key, get_cached_json, set_cached_json
 from src.database import get_client
 
 router = APIRouter()
+_ENTITIES_CACHE_TTL_SECONDS = 120
 
 
 class EntitySummary(BaseModel):
@@ -30,6 +32,14 @@ def list_entities(
     user_id: str = current_user["sub"]
     raw_jwt: str = current_user["_raw_jwt"]
     db = get_client(raw_jwt)
+    cache_key = build_user_cache_key(
+        user_id,
+        "entities",
+        {"limit": limit, "offset": offset},
+    )
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return [EntitySummary.model_validate(row) for row in cached]
 
     rows = (
         db.table("entities")
@@ -65,4 +75,10 @@ def list_entities(
         for key, value in grouped.items()
     ]
     summaries.sort(key=lambda item: (-item.mentions, -item.conversation_count, item.name.lower()))
-    return summaries[offset : offset + limit]
+    visible = summaries[offset : offset + limit]
+    set_cached_json(
+        cache_key,
+        [summary.model_dump(mode="json") for summary in visible],
+        _ENTITIES_CACHE_TTL_SECONDS,
+    )
+    return visible
