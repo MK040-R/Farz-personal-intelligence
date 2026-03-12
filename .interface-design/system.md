@@ -1,8 +1,8 @@
 # Farz — Interface Design System
 
-## Direction: "Quiet Intelligence"
+## Direction: "Insightful Dashboard"
 
-> A composed, airy workspace for working professionals. Warm off-white background, clean white cards, a single calm blue accent. The feel of a well-organized desk — not a terminal. Nothing fights for attention. The content is the product.
+> A bright, confident dashboard for working professionals. Light mint canvas, crisp white cards, deep navy ink, and a single vivid green accent. Feels like a modern analytics product — clear metrics, obvious status, and fast scanning. The content is still the product, but the frame now feels more purposeful and energetic.
 
 ---
 
@@ -20,34 +20,34 @@
 
 ### Color
 
-Warm off-white base, white surfaces, single calm blue accent.
+Light mint base, white surfaces, deep navy ink, single vivid green accent. Secondary chart/status accents are derived from semantic tokens, not new primitives.
 
 | Token                    | Value                          | Usage                                                        |
 | ------------------------ | ------------------------------ | ------------------------------------------------------------ |
-| `--bg-base`              | `#F7F6F3`                      | App background (warm off-white — not clinical white)         |
-| `--bg-surface`           | `#FFFFFF`                      | Cards, panels (float on base)                                |
-| `--bg-surface-raised`    | `#F0EFF0`                      | Modals, dropdowns                                            |
-| `--bg-control`           | `#F3F2EF`                      | Inputs, text areas                                           |
-| `--ink-primary`          | `#1C1C27`                      | Primary text (near-black with warm undertone)                |
-| `--ink-secondary`        | `#6B6E7A`                      | Supporting text, labels                                      |
-| `--ink-tertiary`         | `#9B9EA8`                      | Metadata, timestamps                                         |
-| `--ink-muted`            | `#C4C5CB`                      | Disabled, placeholder                                        |
-| `--accent`               | `#4A6CF7`                      | Interactive elements, Arc thread, commitment bars, focus — the only color |
-| `--accent-subtle`        | `#EEF1FE`                      | Accent backgrounds (badges, highlights)                      |
-| `--accent-hover`         | `#3555E8`                      | Hover on accent elements                                     |
-| `--border-standard`      | `rgba(0,0,0,0.08)`             | Default separation                                           |
-| `--border-soft`          | `rgba(0,0,0,0.04)`             | Very subtle grouping                                         |
-| `--border-emphasis`      | `rgba(0,0,0,0.14)`             | Active states, selected rows                                 |
-| `--shadow-card`          | `0 1px 4px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)` | Card depth |
-| `--shadow-raised`        | `0 4px 16px rgba(0,0,0,0.08)` | Modals, hover cards                                          |
-| `--semantic-open`        | `#16A37A`                      | Open commitment/topic status                                 |
-| `--semantic-resolved`    | `#8E9BA8`                      | Resolved state (neutral, not celebratory)                    |
-| `--semantic-destructive` | `#E5484D`                      | Destructive actions                                          |
+| `--bg-base`              | `#F3F8FF`                      | App background (light blue‑mint canvas; can be overlaid with a subtle gradient) |
+| `--bg-surface`           | `#FFFFFF`                      | Cards, panels, sidebar                                       |
+| `--bg-surface-raised`    | `#F7FAFF`                      | Header, filters, raised panels                               |
+| `--bg-control`           | `#EEF3FF`                      | Inputs, chips, pill filters                                  |
+| `--ink-primary`          | `#041021`                      | Primary text (deep navy)                                     |
+| `--ink-secondary`        | `#4B5565`                      | Supporting text, labels                                      |
+| `--ink-tertiary`         | `#6B7280`                      | Metadata, timestamps                                         |
+| `--ink-muted`            | `#9CA3AF`                      | Disabled, placeholder                                        |
+| `--accent`               | `#00C27A`                      | Primary interactive elements, nav active state, key metrics  |
+| `--accent-subtle`        | `rgba(0, 194, 122, 0.12)`      | Accent backgrounds (badges, highlights, tiles)               |
+| `--accent-hover`         | `#02B16F`                      | Hover on accent elements                                     |
+| `--border-standard`      | `rgba(15, 23, 42, 0.08)`       | Default separation                                           |
+| `--border-soft`          | `rgba(15, 23, 42, 0.04)`       | Very subtle grouping                                         |
+| `--border-emphasis`      | `rgba(0, 194, 122, 0.55)`      | Active states, selected items                                |
+| `--shadow-card`          | `0 18px 45px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.04)` | Card depth |
+| `--shadow-raised`        | `0 24px 60px rgba(15, 23, 42, 0.16)` | Modals, hover cards, hero tiles                              |
+| `--semantic-open`        | `#F59E0B`                      | Open / pending state (warm amber)                            |
+| `--semantic-resolved`    | `#10B981`                      | Resolved / completed state (calm green)                      |
+| `--semantic-destructive` | `#EF4444`                      | Destructive or error states                                  |
 
 
 ### Typography
 
-Inter throughout. Round, readable, the lingua franca of modern professional SaaS.
+Inter throughout. Round, readable, the lingua franca of modern professional SaaS. The existing `--font-plus-jakarta` variable name stays in code for compatibility, but now resolves to Inter in implementation.
 
 | Role                    | Font  | Weight | Size    | Notes                                           |
 | ----------------------- | ----- | ------ | ------- | ----------------------------------------------- |
@@ -61,15 +61,15 @@ Inter throughout. Round, readable, the lingua franca of modern professional SaaS
 
 ### Depth Strategy
 
-**Subtle shadows on white cards floating on warm-base background.**
+**Pronounced but soft shadows under large cards on a bright canvas.**
 
-Light mode earns depth through natural shadow, not color shifting. Cards feel lifted from the page. This is how Stripe, Linear, and Notion do it.
+The dashboard should feel like a layer of cards hovering above a calm gradient — similar to modern analytics tools.
 
-- `--bg-base` is the canvas — warm off-white
-- `--bg-surface` (white) cards sit on the canvas with `--shadow-card`
-- Sidebar is white — same as a card, separated by `--border-standard`
-- Inputs sit slightly inset: `--bg-control` + no shadow
-- No borders competing with shadows — pick one per element
+- `--bg-base` is the canvas — light mint/blue; the body may layer a subtle gradient on top.
+- `--bg-surface` cards sit on the canvas with `--shadow-card` and `--border-soft`.
+- Sidebar intentionally contrasts the main canvas using a deep navy treatment derived from `--ink-primary`, so the navigation rail reads as a separate anchor.
+- Inputs use `--bg-control` with no shadow; rely on borders and focus rings instead.
+- Prefer shadows for elevation; only use borders for separation and emphasis.
 
 
 ### Spacing
@@ -88,14 +88,14 @@ Base unit: **4px** — but sections are more generous than the old system.
 
 ### Border Radius
 
-Friendly and consistent. Not sharp. Not overly bubbly.
+Friendly and consistent. Larger radii on primary cards to echo the reference dashboards, while keeping chips compact.
 
 | Scale  | Value  | Usage                   |
 | ------ | ------ | ----------------------- |
 | `sm`   | 6px    | Badges, chips           |
-| `md`   | 10px   | Cards, inputs, buttons  |
-| `lg`   | 14px   | Modals, popovers        |
-| `pill` | 999px  | Status pills            |
+| `md`   | 12px   | Cards, inputs, buttons  |
+| `lg`   | 18px   | Modals, hero tiles      |
+| `pill` | 999px  | Status pills, filters   |
 
 ---
 
@@ -112,13 +112,13 @@ The **Topic Arc** is Farz's core concept: a topic's journey across meetings over
 
 ## Navigation
 
-Clean white sidebar. Calm and contained.
+Dark, saturated sidebar on the left. Main workspace stays light; navigation is the single strong contrast zone.
 
-- Background: `--bg-surface` (white) with `--shadow-card` on right edge
-- Width: 220px
-- Active state: `--accent` text color, `--accent-subtle` background, no bars or indicators
-- Nav item font: Inter 500 14px, `--ink-secondary` default, `--ink-primary` hover
-- Logo: Inter 700, `--ink-primary` — no color tricks
+- Background: deep navy gradient derived from `--ink-primary`
+- Width: 220–248px
+- Active state: bright green pill using `--accent`, dark text for maximum contrast
+- Inactive nav items: white at reduced opacity; hover moves toward full white
+- Logo: bold white wordmark inside a subtle glassy panel
 
 Nav items: Dashboard, Search, Meetings, Commitments, Insights
 
@@ -127,7 +127,7 @@ Nav items: Dashboard, Search, Meetings, Commitments, Insights
 ## Key Component Patterns
 
 ### Meeting Card
-- Surface: `--bg-surface`, shadow: `--shadow-card`, radius: `md`
+- Surface: `--bg-surface`, shadow: `--shadow-card`, radius: `lg`
 - Title: `--ink-primary`, Inter 600, 15px
 - Meta line (date, duration, participants): `--ink-tertiary`, 12px
 - "Brief ready" badge: `--accent` background, white text, `pill` radius
@@ -156,10 +156,19 @@ Nav items: Dashboard, Search, Meetings, Commitments, Insights
 
 ## What This Is Not
 
-- No dark backgrounds
-- No harsh black text (use `--ink-primary` `#1C1C27`, not `#000000`)
-- No multiple accent colors
-- No decorative gradients
-- No dense layouts — every section has breathing room
+- No noisy or high-contrast gradients that fight with content
+- No harsh black text (always use `--ink-primary` / `--ink-secondary`, not `#000000`)
+- No random extra accent colors outside the semantic palette
+- No cramped tiles — cards should still have breathing room
 - No monospace for non-data content (transcripts and timestamps only)
 - No borders competing with shadows — choose one elevation method per element
+
+---
+
+## Changelog
+
+- **2026‑03‑12 — Insightful Dashboard refresh**  
+  - Switched from the earlier \"Quiet Intelligence\" warm off‑white palette to a light mint/blue dashboard palette.  
+  - Updated base/background, accent, semantic, and shadow tokens while preserving all token names.  
+  - Increased primary card radii and shadow depth to better match the reference dashboards.  
+  - Adopted a dark navigation rail while keeping the main workspace light.

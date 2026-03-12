@@ -91,8 +91,8 @@ export function AppFrame({ children }: AppFrameProps) {
   return (
     <div className="min-h-screen bg-bg-base text-ink-primary">
       <div className="mx-auto flex min-h-screen w-full max-w-[1400px]">
-        <aside className="w-[240px] border-r border-standard bg-bg-surface px-4 py-6">
-          <div className="mb-8 border border-emphasis bg-accent-subtle px-3 py-2 text-sm font-semibold tracking-wide text-accent">
+        <aside className="sidebar-shell w-[248px] px-4 py-6">
+          <div className="sidebar-logo mb-8 px-4 py-3 text-sm font-bold tracking-[0.18em] text-white">
             FARZ
           </div>
 
@@ -104,10 +104,10 @@ export function AppFrame({ children }: AppFrameProps) {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`block rounded-md border px-3 py-2 text-sm transition ${
+                  className={`sidebar-nav-link block px-4 py-2.5 text-sm font-medium ${
                     isActive
-                      ? "border-emphasis bg-accent-subtle text-accent"
-                      : "border-transparent text-ink-secondary hover:border-soft hover:text-ink-primary"
+                      ? "sidebar-nav-link--active"
+                      : ""
                   }`}
                 >
                   {item.label}
@@ -116,7 +116,7 @@ export function AppFrame({ children }: AppFrameProps) {
             })}
           </nav>
 
-          <div className="mt-8 rounded-md border border-soft px-3 py-3 text-xs text-ink-tertiary">
+          <div className="sidebar-panel mt-8 px-4 py-4 text-xs leading-6">
             MVP pilot mode. Use Search, Topics, Commitments, and Entities to review the indexed
             meeting history before broadening rollout.
           </div>
