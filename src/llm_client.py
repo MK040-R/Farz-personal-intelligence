@@ -410,7 +410,7 @@ def answer_question(
     )
     # Claude returns only index numbers — server resolves them to CitationRef objects.
     # This avoids asking Claude to populate database UUIDs it cannot know.
-    instructor_result: _InstructorAnswer = _instructor_client().messages.create(  # type: ignore[type-var]
+    instructor_result: _InstructorAnswer = _instructor_client().messages.create(
         model=str(_Model.DIGEST),
         max_tokens=1024,
         system=_ANSWER_SYSTEM_PROMPT,
