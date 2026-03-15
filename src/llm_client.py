@@ -399,7 +399,7 @@ def answer_question(
     logger.debug(
         "LLM call — answer_question model=%s context_items=%d", _Model.DIGEST, len(context_results)
     )
-    result: AnswerResult = _instructor_client().messages.create(  # type: ignore[assignment]
+    result: AnswerResult = _instructor_client().messages.create(
         model=str(_Model.DIGEST),
         max_tokens=1024,
         system=_ANSWER_SYSTEM_PROMPT,
