@@ -384,11 +384,11 @@ def answer_question(
 
     # Build numbered context block — never log this
     context_lines: list[str] = []
-    for i, result in enumerate(context_results, 1):
-        title = result.get("title", "")
-        text = result.get("text", "")
-        conv_title = result.get("conversation_title", "")
-        meeting_date = result.get("meeting_date", "")
+    for i, ctx in enumerate(context_results, 1):
+        title = ctx.get("title", "")
+        text = ctx.get("text", "")
+        conv_title = ctx.get("conversation_title", "")
+        meeting_date = ctx.get("meeting_date", "")
         context_lines.append(
             f"[{i}] Source: {conv_title} ({meeting_date})\n"
             f"    Topic/Entity: {title}\n"
@@ -399,7 +399,7 @@ def answer_question(
     logger.debug(
         "LLM call — answer_question model=%s context_items=%d", _Model.DIGEST, len(context_results)
     )
-    result: AnswerResult = _instructor_client().messages.create(  # type: ignore[type-var]
+    result: AnswerResult = _instructor_client().messages.create(  # type: ignore[assignment]
         model=str(_Model.DIGEST),
         max_tokens=1024,
         system=_ANSWER_SYSTEM_PROMPT,
