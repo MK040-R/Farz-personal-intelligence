@@ -50,7 +50,7 @@ services:
       - key: SECRET_KEY
         sync: false
       - key: API_BASE_URL
-        sync: false   # set to your Render URL e.g. https://pocket-nori-personal-intelligence.onrender.com
+        sync: false   # set to your Render URL e.g. https://farz-personal-intelligence.onrender.com
       - key: FRONTEND_URL
         sync: false   # set to your Vercel URL e.g. https://pocket-nori-personal-intelligence.vercel.app
 
