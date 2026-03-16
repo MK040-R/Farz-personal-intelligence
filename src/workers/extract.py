@@ -232,6 +232,7 @@ def extract_from_conversation(
                 "owner": commitment["owner"],
                 "due_date": due_date,
                 "status": commitment.get("status", "open"),
+                "action_type": commitment.get("action_type", "commitment"),
             }
         ).execute()
 

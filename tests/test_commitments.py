@@ -23,6 +23,17 @@ _FAKE_COMMITMENT = {
     "owner": "Alex",
     "due_date": "2025-03-07",
     "status": "open",
+    "action_type": "commitment",
+    "conversation_id": "conv-1",
+}
+
+_FAKE_FOLLOW_UP = {
+    "id": "commit-2",
+    "text": "Waiting for Legal to review the contract",
+    "owner": "Legal",
+    "due_date": None,
+    "status": "open",
+    "action_type": "follow_up",
     "conversation_id": "conv-1",
 }
 
@@ -233,3 +244,60 @@ class TestCommitmentsPatch:
             response = client.patch("/commitments/missing", json={"status": "resolved"})
 
         assert response.status_code == 404
+
+
+@pytest.mark.unit
+class TestCommitmentsActionTypeFilter:
+    def setup_method(self) -> None:
+        _override_auth()
+
+    def teardown_method(self) -> None:
+        _clear_auth()
+
+    def test_rejects_invalid_action_type(self) -> None:
+        with patch("src.api.routes.commitments.get_client", return_value=_make_list_db()):
+            response = client.get("/commitments?action_type=invalid")
+
+        assert response.status_code == 422
+
+    def test_filters_commitments_by_action_type(self) -> None:
+        db = _make_list_db(
+            commitments=[_FAKE_COMMITMENT, _FAKE_FOLLOW_UP],
+            conversations=[
+                {
+                    "id": "conv-1",
+                    "title": "Weekly Sync",
+                    "meeting_date": "2025-03-01T10:00:00+00:00",
+                }
+            ],
+            topics=[],
+            topic_clusters=[],
+        )
+        with patch("src.api.routes.commitments.get_client", return_value=db):
+            response = client.get("/commitments")
+
+        assert response.status_code == 200
+        payloads = response.json()
+        action_types = {p["action_type"] for p in payloads}
+        assert "commitment" in action_types
+        assert "follow_up" in action_types
+
+    def test_action_type_field_present_in_response(self) -> None:
+        db = _make_list_db(
+            commitments=[_FAKE_COMMITMENT],
+            conversations=[
+                {
+                    "id": "conv-1",
+                    "title": "Weekly Sync",
+                    "meeting_date": "2025-03-01T10:00:00+00:00",
+                }
+            ],
+            topics=[],
+            topic_clusters=[],
+        )
+        with patch("src.api.routes.commitments.get_client", return_value=db):
+            response = client.get("/commitments")
+
+        assert response.status_code == 200
+        payload = response.json()[0]
+        assert payload["action_type"] == "commitment"

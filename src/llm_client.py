@@ -52,6 +52,13 @@ class CommitmentResult(BaseModel):
         default=None, description="ISO date YYYY-MM-DD if explicitly stated, else null"
     )
     status: Literal["open", "resolved"] = "open"
+    action_type: Literal["commitment", "follow_up"] = Field(
+        default="commitment",
+        description=(
+            "commitment = the meeting participant personally owes this action; "
+            "follow_up = the participant is tracking an action they expect FROM someone else"
+        ),
+    )
 
 
 class CommitmentList(BaseModel):
@@ -93,23 +100,22 @@ Guidelines:
 - Return at most 5 topics for one meeting
 - Do not return placeholders such as "No substantive content available", "No extractable transcript content", or any equivalent "no content" label"""
 
-_COMMITMENT_SYSTEM_PROMPT = """You are an expert meeting analyst. Extract commitments and action items from a meeting transcript.
+_COMMITMENT_SYSTEM_PROMPT = """You are an expert meeting analyst. Extract all actions and follow-ups from a meeting transcript.
 
-A commitment is a statement where a named participant agrees to do something:
-- Explicit action items ("I'll send the report by Friday")
-- Agreements to follow up ("Let me check on that and get back to you")
-- Assigned tasks ("Can you own the API integration? — Sure, I'll handle it")
+There are two types of actions:
+- commitment: a participant personally agrees to do something ("I'll send the report by Friday", "I'll own the API integration")
+- follow_up: a participant expects an action FROM someone else and is tracking it ("Can you send me the contract?", "We're waiting on Legal to review this")
 
-For each commitment:
+For each action:
 - Capture the exact text or a close paraphrase
 - Identify the person who owns it (use their name as spoken)
 - Extract a due date only if explicitly mentioned (ISO format YYYY-MM-DD); leave null if not stated
 - Set status to "open" unless the transcript explicitly confirms completion
+- Set action_type to "commitment" if the owner is doing the work themselves, or "follow_up" if the owner is waiting on/tracking someone else
 
 Guidelines:
-- Only extract commitments with a clear owner — exclude vague "we should" statements
-- Exclude observations, summaries, decisions, and status updates that are not forward-looking commitments
-- Keep only action items with a clear owner and a concrete intended action
+- Only extract actions with a clear owner — exclude vague "we should" statements
+- Exclude observations, summaries, decisions, and status updates that are not forward-looking actions
 - Do not fabricate due dates
 - Accuracy over quantity"""
 
