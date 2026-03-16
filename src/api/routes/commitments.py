@@ -2,10 +2,12 @@
 Commitments routes.
 
 GET  /commitments       — list all commitments across all conversations
+POST /commitments       — manually create a commitment or follow-up
 PATCH /commitments/{id} — mark a commitment as resolved (or re-open it)
 """
 
 import logging
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 
@@ -39,6 +41,7 @@ class CommitmentOut(BaseModel):
     owner: str
     due_date: str | None
     status: str
+    action_type: str = "commitment"
     conversation_id: str
     conversation_title: str
     meeting_date: str | None = None
@@ -47,6 +50,13 @@ class CommitmentOut(BaseModel):
 
 class CommitmentPatch(BaseModel):
     status: str  # "open" | "resolved"
+
+
+class CommitmentCreate(BaseModel):
+    text: str
+    action_type: str = "commitment"  # "commitment" | "follow_up"
+    owner: str = ""
+    due_date: str | None = None
 
 
 def _normalize_commitment_status(value: str | None) -> str:
@@ -108,6 +118,7 @@ def _build_topic_labels_by_conversation(
 def list_commitments(
     filter_status: str | None = None,
     status_param: str | None = Query(default=None, alias="status"),
+    action_type: str | None = None,
     assignee: str | None = None,
     attributed_to: str | None = Query(default=None, alias="attributed_to"),
     topic: str | None = None,
@@ -121,7 +132,8 @@ def list_commitments(
     """Return all commitments for the current user.
 
     Optional query parameter ``filter_status`` or ``status`` accepts ``open``
-    or ``resolved`` to filter by status. Without it, all commitments are returned.
+    or ``resolved`` to filter by status. Optional ``action_type`` accepts
+    ``commitment`` or ``follow_up``. Without filters, all items are returned.
     """
     user_id: str = current_user["sub"]
     raw_jwt: str = current_user["_raw_jwt"]
@@ -132,6 +144,12 @@ def list_commitments(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="status filter must be 'open' or 'resolved'",
+        )
+
+    if action_type and action_type not in ("commitment", "follow_up"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="action_type must be 'commitment' or 'follow_up'",
         )
 
     effective_assignee = (assignee or attributed_to or "").strip()
@@ -176,6 +194,7 @@ def list_commitments(
         "commitments_list",
         {
             "status": effective_filter,
+            "action_type": action_type,
             "assignee": effective_assignee,
             "topic": effective_topic,
             "meeting": effective_meeting,
@@ -191,7 +210,7 @@ def list_commitments(
 
     query = (
         db.table("commitments")
-        .select("id, text, owner, due_date, status, conversation_id")
+        .select("id, text, owner, due_date, status, action_type, conversation_id")
         .eq("user_id", user_id)
         .order("created_at", desc=True)
     )
@@ -199,6 +218,8 @@ def list_commitments(
         query = query.eq("status", effective_filter)
     elif effective_filter == "resolved":
         query = query.or_("status.eq.resolved,status.eq.done,status.eq.cancelled")
+    if action_type:
+        query = query.eq("action_type", action_type)
 
     if effective_assignee:
         if effective_assignee.lower() == "me":
@@ -293,6 +314,7 @@ def list_commitments(
             owner=c["owner"],
             due_date=c.get("due_date"),
             status=_normalize_commitment_status(c.get("status")),
+            action_type=c.get("action_type") or "commitment",
             conversation_id=c["conversation_id"],
             conversation_title=str(c.get("conversation_title") or ""),
             meeting_date=c.get("meeting_date"),
@@ -440,6 +462,7 @@ def update_commitment(
         owner=updated["owner"],
         due_date=updated.get("due_date"),
         status=_normalize_commitment_status(updated.get("status")),
+        action_type=updated.get("action_type") or "commitment",
         conversation_id=conversation_id,
         conversation_title=str(conversation.get("title") or ""),
         meeting_date=(
@@ -448,4 +471,91 @@ def update_commitment(
             else None
         ),
         topic_labels=topic_labels,
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /commitments  — manual creation
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "",
+    response_model=CommitmentOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Manually create a commitment or follow-up",
+)
+def create_commitment(
+    body: CommitmentCreate,
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> CommitmentOut:
+    """Create a commitment or follow-up manually (not AI-extracted).
+
+    The item is not linked to any specific conversation — ``conversation_id``
+    will be empty and ``conversation_title`` will be an empty string.
+    """
+    user_id: str = current_user["sub"]
+    raw_jwt: str = current_user["_raw_jwt"]
+    db = get_client(raw_jwt)
+
+    if not body.text or not body.text.strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="text is required",
+        )
+    if body.action_type not in ("commitment", "follow_up"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="action_type must be 'commitment' or 'follow_up'",
+        )
+
+    new_id = str(uuid.uuid4())
+    due_date: str | None = None
+    if body.due_date:
+        parsed_due = _parse_iso_timestamp(body.due_date)
+        if parsed_due is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="due_date must be a valid ISO timestamp",
+            )
+        due_date = parsed_due.isoformat()
+
+    insert_result = (
+        db.table("commitments")
+        .insert(
+            {
+                "id": new_id,
+                "user_id": user_id,
+                "conversation_id": None,
+                "text": body.text.strip(),
+                "owner": body.owner.strip() if body.owner else "",
+                "due_date": due_date,
+                "status": "open",
+                "action_type": body.action_type,
+            }
+        )
+        .execute()
+    )
+
+    if not insert_result.data:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create commitment",
+        )
+
+    created = insert_result.data[0]
+    bump_user_cache_version(user_id)
+    logger.info("Manual commitment created — id=%s user=%s", new_id, user_id)
+
+    return CommitmentOut(
+        id=created["id"],
+        text=created["text"],
+        owner=created.get("owner") or "",
+        due_date=created.get("due_date"),
+        status="open",
+        action_type=created.get("action_type") or "commitment",
+        conversation_id=str(created.get("conversation_id") or ""),
+        conversation_title="",
+        meeting_date=None,
+        topic_labels=[],
     )

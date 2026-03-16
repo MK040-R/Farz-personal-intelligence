@@ -15,6 +15,10 @@ class CommitmentBase(BaseModel):
     owner: str = Field(description="Person who made the commitment")
     due_date: datetime.datetime | None = None
     status: Literal["open", "resolved"] = Field(default="open", description="open or resolved")
+    action_type: Literal["commitment", "follow_up"] = Field(
+        default="commitment",
+        description="commitment = user owes it; follow_up = user tracks someone else",
+    )
     segment_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
