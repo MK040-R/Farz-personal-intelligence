@@ -154,7 +154,7 @@
 
 **Deployment URL:**
 
-- Backend health check: https://pocket-nori-personal-intelligence.onrender.com/health
+- Backend health check: https://farz-personal-intelligence.onrender.com/health
 - Auto-restart on push to main via Render GitHub integration
 
 ## Environment Configuration
