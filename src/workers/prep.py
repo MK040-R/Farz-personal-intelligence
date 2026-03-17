@@ -21,7 +21,7 @@ from src.database import get_direct_connection
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(
+@celery_app.task(  # type: ignore[untyped-decorator]
     bind=True,
     max_retries=1,
     default_retry_delay=60,

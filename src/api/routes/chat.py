@@ -14,6 +14,7 @@ history for multi-turn context.
 import json
 import logging
 import uuid
+from collections.abc import Generator
 from datetime import UTC, datetime
 from typing import Any
 
@@ -314,7 +315,7 @@ def chat(
     context_results = _retrieve_context(user_id, body.message)
     citations = _build_citations(context_results)
 
-    def _generate_stream():
+    def _generate_stream() -> Generator[str]:
         # Emit session ID first
         yield _sse_event("session", {"session_id": session_id})
 

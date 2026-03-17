@@ -15,7 +15,7 @@ from typing import Any, Literal
 import anthropic
 import instructor
 import openai
-from anthropic.types import TextBlock
+from anthropic.types import MessageParam, TextBlock
 from pydantic import BaseModel, Field
 
 from src.config import settings
@@ -567,9 +567,9 @@ def stream_chat_response(
         )
 
     # Build messages: history + current user message with context
-    messages: list[dict[str, str]] = []
+    messages: list[MessageParam] = []
     for msg in conversation_history:
-        messages.append({"role": msg["role"], "content": msg["content"]})
+        messages.append({"role": msg["role"], "content": msg["content"]})  # type: ignore[typeddict-item]
 
     current_content = user_message
     if context_block:

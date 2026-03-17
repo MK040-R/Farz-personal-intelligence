@@ -9,7 +9,7 @@ PATCH /commitments/{id} — mark a commitment as resolved (or re-open it)
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -568,7 +568,7 @@ def create_commitment(
 
 
 class DraftRequest(BaseModel):
-    format: str = Field(default="email", description="'email' or 'message'")
+    format: Literal["email", "message"] = Field(default="email", description="'email' or 'message'")
 
 
 class DraftResponse(BaseModel):
