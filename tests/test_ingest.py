@@ -183,8 +183,7 @@ class TestIngestRecordingUnit:
             patch("src.workers.ingest.get_client") as mock_get_client,
             patch("src.workers.ingest.refresh_access_token_sync", return_value="access-token"),
             patch("src.workers.ingest.export_transcript_sync", return_value=transcript_text),
-            patch("src.workers.ingest.extract_from_conversation.delay"),
-            patch("src.workers.ingest.embed_conversation.delay"),
+            patch("src.workers.ingest.chain"),
         ):
             db = MagicMock()
             db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
@@ -199,8 +198,8 @@ class TestIngestRecordingUnit:
         assert result["conversation_id"] == new_conv_id
         assert result["segment_count"] == 2
 
-    def test_ingest_chains_extract_and_embed(self, eager_ingest: Any) -> None:
-        """After a successful ingest, extract and embed tasks must be queued."""
+    def test_ingest_chains_extract_then_embed(self, eager_ingest: Any) -> None:
+        """After a successful ingest, extract→embed must be chained (not parallel)."""
         new_conv_id = str(uuid.uuid4())
         transcript_text = "Alice\n00:00\nHello.\n"
 
@@ -208,8 +207,7 @@ class TestIngestRecordingUnit:
             patch("src.workers.ingest.get_client") as mock_get_client,
             patch("src.workers.ingest.refresh_access_token_sync", return_value="token"),
             patch("src.workers.ingest.export_transcript_sync", return_value=transcript_text),
-            patch("src.workers.ingest.extract_from_conversation.delay") as mock_extract,
-            patch("src.workers.ingest.embed_conversation.delay") as mock_embed,
+            patch("src.workers.ingest.chain") as mock_chain,
         ):
             db = MagicMock()
             db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
@@ -220,8 +218,9 @@ class TestIngestRecordingUnit:
 
             self._run_task(eager_ingest)
 
-        mock_extract.assert_called_once()
-        mock_embed.assert_called_once()
+        # chain() should be called once, and apply_async() called on the result
+        mock_chain.assert_called_once()
+        mock_chain.return_value.apply_async.assert_called_once()
 
     def test_export_error_propagates(self, eager_ingest: Any) -> None:
         """If export_transcript_sync raises, the task should propagate the error."""
@@ -259,8 +258,7 @@ class TestIngestRecordingUnit:
             patch("src.workers.ingest.get_client") as mock_get_client,
             patch("src.workers.ingest.refresh_access_token_sync", return_value="token"),
             patch("src.workers.ingest.export_transcript_sync", return_value=transcript_text),
-            patch("src.workers.ingest.extract_from_conversation.delay"),
-            patch("src.workers.ingest.embed_conversation.delay"),
+            patch("src.workers.ingest.chain"),
         ):
             db = MagicMock()
             db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
@@ -279,8 +277,7 @@ class TestIngestRecordingUnit:
             patch("src.workers.ingest.get_client") as mock_get_client,
             patch("src.workers.ingest.refresh_access_token_sync", return_value="token"),
             patch("src.workers.ingest.export_transcript_sync", return_value=""),
-            patch("src.workers.ingest.extract_from_conversation.delay"),
-            patch("src.workers.ingest.embed_conversation.delay"),
+            patch("src.workers.ingest.chain"),
         ):
             db = MagicMock()
             db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
@@ -303,8 +300,7 @@ class TestIngestRecordingUnit:
             patch("src.workers.ingest.get_client") as mock_get_client,
             patch("src.workers.ingest.refresh_access_token_sync", return_value="token"),
             patch("src.workers.ingest.export_transcript_sync", return_value=transcript_text),
-            patch("src.workers.ingest.extract_from_conversation.delay"),
-            patch("src.workers.ingest.embed_conversation.delay"),
+            patch("src.workers.ingest.chain"),
         ):
             db = MagicMock()
             db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
@@ -410,8 +406,7 @@ class TestDetectAndParse:
             patch("src.workers.ingest.get_client") as mock_get_client,
             patch("src.workers.ingest.refresh_access_token_sync", return_value="token"),
             patch("src.workers.ingest.export_transcript_sync", return_value=_SAMPLE_GEMINI_NOTES),
-            patch("src.workers.ingest.extract_from_conversation.delay"),
-            patch("src.workers.ingest.embed_conversation.delay"),
+            patch("src.workers.ingest.chain"),
         ):
             db = MagicMock()
             db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []

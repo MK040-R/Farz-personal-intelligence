@@ -10,6 +10,7 @@ POST /auth/logout    — clears the session cookies.
 """
 
 import logging
+import secrets
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlencode
@@ -102,6 +103,7 @@ def _redirect_uri() -> str:
 @router.get("/login")
 def login() -> RedirectResponse:
     """Build the Google OAuth2 authorization URL and redirect the browser to it."""
+    state = secrets.token_urlsafe(32)
     params: dict[str, str] = {
         "client_id": settings.GOOGLE_CLIENT_ID,
         "redirect_uri": _redirect_uri(),
@@ -109,26 +111,58 @@ def login() -> RedirectResponse:
         "scope": " ".join(_SCOPES),
         "access_type": "offline",
         "prompt": "consent",
+        "state": state,
     }
     auth_url = f"{_GOOGLE_AUTH_ENDPOINT}?{urlencode(params)}"
     logger.info("Redirecting user to Google OAuth consent screen")
-    return RedirectResponse(url=auth_url)
+    response = RedirectResponse(url=auth_url)
+    response.set_cookie(
+        key="oauth_state",
+        value=state,
+        httponly=True,
+        samesite="lax",
+        secure=True,
+        max_age=600,
+        path="/auth",
+    )
+    return response
 
 
 @router.get("/callback")
 async def callback(
+    request: Request,
     code: str,
+    state: str,
     error: str | None = None,
 ) -> RedirectResponse:
     """
     Handle the OAuth2 callback from Google.
 
-    1. Raises HTTP 400 if Google returned an error.
-    2. Exchanges the authorization code for tokens.
-    3. Signs the user in to Supabase with the id_token.
-    4. Sets an HttpOnly session cookie containing the Supabase JWT.
-    5. Redirects the browser to the frontend onboarding page.
+    1. Validates the state parameter against the stored cookie (CSRF protection).
+    2. Raises HTTP 400 if Google returned an error.
+    3. Exchanges the authorization code for tokens.
+    4. Signs the user in to Supabase with the id_token.
+    5. Sets an HttpOnly session cookie containing the Supabase JWT.
+    6. Redirects the browser to the frontend onboarding page.
     """
+    # --- Validate OAuth state (CSRF protection) ---
+    expected_state = request.cookies.get("oauth_state")
+    state_valid = (
+        expected_state is not None
+        and state is not None
+        and secrets.compare_digest(expected_state, state)
+    )
+    if not state_valid:
+        logger.warning("OAuth state mismatch — possible CSRF")
+        response = RedirectResponse(
+            url=f"{settings.frontend_origin}/auth/error?reason=state_mismatch"
+        )
+        response.delete_cookie(key="oauth_state", path="/auth")
+        return response
+
+    # Always delete the state cookie (single-use)
+    # (applied to the final redirect response below)
+
     if error is not None:
         logger.warning("Google OAuth returned an error: %s", error)
         raise HTTPException(status_code=400, detail=f"OAuth error: {error}")
@@ -211,6 +245,7 @@ async def callback(
     # --- Set HttpOnly session cookies and redirect to frontend ---
     redirect = RedirectResponse(url=f"{settings.frontend_origin}/onboarding")
     _set_session_cookies(redirect, session.access_token, session.refresh_token)
+    redirect.delete_cookie(key="oauth_state", path="/auth")
     return redirect
 
 

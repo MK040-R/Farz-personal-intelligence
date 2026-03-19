@@ -52,6 +52,9 @@ def get_client(user_jwt: str) -> Client:
     return client
 
 
+_STATEMENT_TIMEOUT_MS = 10_000  # 10 seconds max for any vector search query
+
+
 def get_direct_connection() -> psycopg2.extensions.connection:
     """Return a raw psycopg2 connection via DATABASE_URL.
 
@@ -69,10 +72,12 @@ def get_direct_connection() -> psycopg2.extensions.connection:
     Returns:
         An open psycopg2 connection with RealDictCursor as default cursor factory.
     """
-    return psycopg2.connect(
+    conn = psycopg2.connect(
         settings.DATABASE_URL,
         cursor_factory=psycopg2.extras.RealDictCursor,
+        options=f"-c statement_timeout={_STATEMENT_TIMEOUT_MS}",
     )
+    return conn
 
 
 def get_admin_client() -> Client:
