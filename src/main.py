@@ -67,11 +67,13 @@ class CSRFOriginMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: Any) -> Response:
         if request.method in _SAFE_METHODS:
-            return await call_next(request)
+            response: Response = await call_next(request)
+            return response
 
         # Only enforce CSRF for cookie-authenticated requests
         if "session" not in request.cookies:
-            return await call_next(request)
+            response = await call_next(request)
+            return response
 
         allowed = _allowed_origins()
 
@@ -79,7 +81,8 @@ class CSRFOriginMiddleware(BaseHTTPMiddleware):
         origin = request.headers.get("origin")
         if origin:
             if _extract_origin(origin) in allowed:
-                return await call_next(request)
+                response = await call_next(request)
+                return response
             logger.warning("CSRF rejected: Origin %s not in allowlist", origin)
             return JSONResponse(
                 status_code=403,
@@ -91,7 +94,8 @@ class CSRFOriginMiddleware(BaseHTTPMiddleware):
         if referer:
             referer_origin = _extract_origin(referer)
             if referer_origin in allowed:
-                return await call_next(request)
+                response = await call_next(request)
+                return response
             logger.warning("CSRF rejected: Referer origin %s not in allowlist", referer_origin)
             return JSONResponse(
                 status_code=403,
