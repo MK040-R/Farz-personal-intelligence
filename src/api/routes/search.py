@@ -71,6 +71,9 @@ class SearchRequest(BaseModel):
                     raise ValueError(
                         f"{field_name} must be a valid ISO date (YYYY-MM-DD), got: {value!r}"
                     ) from exc
+        if self.date_from and self.date_to:
+            if date.fromisoformat(self.date_from) > date.fromisoformat(self.date_to):
+                raise ValueError("date_from must not be after date_to")
         return self
 
 
@@ -101,6 +104,9 @@ class AskRequest(BaseModel):
                     raise ValueError(
                         f"{field_name} must be a valid ISO date (YYYY-MM-DD), got: {value!r}"
                     ) from exc
+        if self.date_from and self.date_to:
+            if date.fromisoformat(self.date_from) > date.fromisoformat(self.date_to):
+                raise ValueError("date_from must not be after date_to")
         return self
 
 
@@ -160,12 +166,19 @@ def _search_topic_clusters(
          AND c.user_id = %s
         WHERE tc.user_id = %s
           AND tc.embedding IS NOT NULL
-          AND 1 - (tc.embedding <=> %s::vector) >= {_SCORE_THRESHOLD}
+          AND 1 - (tc.embedding <=> %s::vector) >= %s
           {date_sql}
         ORDER BY tc.id, c.meeting_date DESC, score DESC
         LIMIT %s
     """
-    params: list[Any] = [vector_literal, user_id, user_id, user_id, vector_literal]
+    params: list[Any] = [
+        vector_literal,
+        user_id,
+        user_id,
+        user_id,
+        vector_literal,
+        _SCORE_THRESHOLD,
+    ]
     params.extend(date_params)
     params.append(limit)
 
@@ -218,12 +231,12 @@ def _search_entities(
          AND c.user_id = %s
         WHERE e.user_id = %s
           AND e.embedding IS NOT NULL
-          AND 1 - (e.embedding <=> %s::vector) >= {_SCORE_THRESHOLD}
+          AND 1 - (e.embedding <=> %s::vector) >= %s
           {date_sql}
         ORDER BY score DESC, c.meeting_date DESC
         LIMIT %s
     """
-    params: list[Any] = [vector_literal, user_id, user_id, vector_literal]
+    params: list[Any] = [vector_literal, user_id, user_id, vector_literal, _SCORE_THRESHOLD]
     params.extend(date_params)
     params.append(limit)
 
@@ -273,12 +286,12 @@ def _search_meeting_digests(
         FROM conversations c
         WHERE c.user_id = %s
           AND c.digest_embedding IS NOT NULL
-          AND 1 - (c.digest_embedding <=> %s::vector) >= {_SCORE_THRESHOLD}
+          AND 1 - (c.digest_embedding <=> %s::vector) >= %s
           {date_sql}
         ORDER BY score DESC, c.meeting_date DESC
         LIMIT %s
     """
-    params: list[Any] = [vector_literal, user_id, vector_literal]
+    params: list[Any] = [vector_literal, user_id, vector_literal, _SCORE_THRESHOLD]
     params.extend(date_params)
     params.append(limit)
 
@@ -330,12 +343,12 @@ def _search_segments(
          AND c.user_id = %s
         WHERE ts.user_id = %s
           AND ts.embedding IS NOT NULL
-          AND 1 - (ts.embedding <=> %s::vector) >= {_SCORE_THRESHOLD}
+          AND 1 - (ts.embedding <=> %s::vector) >= %s
           {date_sql}
         ORDER BY ts.embedding <=> %s::vector
         LIMIT %s
     """
-    params: list[Any] = [vector_literal, user_id, user_id, vector_literal]
+    params: list[Any] = [vector_literal, user_id, user_id, vector_literal, _SCORE_THRESHOLD]
     params.extend(date_params)
     params.extend([vector_literal, limit])
 

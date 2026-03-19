@@ -98,15 +98,18 @@ def bump_user_cache_version(user_id: str) -> None:
     if not cache_enabled():
         return
 
-    with _memory_cache_lock:
-        _memory_versions[user_id] = _memory_versions.get(user_id, 0) + 1
-
     try:
         client = _get_cache_client()
-        client.incr(_version_key(user_id))
+        new_version = client.incr(_version_key(user_id))
         client.expire(_version_key(user_id), _VERSION_TTL_SECONDS)
+        # Sync in-memory version to match Redis on success
+        with _memory_cache_lock:
+            _memory_versions[user_id] = int(new_version)
     except (RedisError, OSError) as exc:
         logger.warning("Cache version bump failed for user=%s: %s", user_id, type(exc).__name__)
+        # Redis failed — bump in-memory as fallback so local reads still invalidate
+        with _memory_cache_lock:
+            _memory_versions[user_id] = _memory_versions.get(user_id, 0) + 1
 
 
 def _cache_suffix(identity: Any) -> str:

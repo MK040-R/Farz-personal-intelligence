@@ -124,7 +124,7 @@ def _retrieve_context(
                 ORDER BY tc.id, score DESC
                 LIMIT %s
                 """,
-                (
+                [
                     vector_literal,
                     user_id,
                     user_id,
@@ -132,7 +132,7 @@ def _retrieve_context(
                     vector_literal,
                     _SCORE_THRESHOLD,
                     limit,
-                ),
+                ],
             )
             results.extend(dict(row) for row in cur.fetchall())
 
@@ -367,6 +367,7 @@ def chat(
 
         # Save assistant message
         assistant_content = "".join(full_response)
+        save_error = False
         try:
             db.table("chat_messages").insert(
                 {
@@ -395,6 +396,12 @@ def chat(
                     logger.debug("Chat title generation skipped: %s", type(title_exc).__name__)
         except Exception as exc:
             logger.error("Failed to save assistant message: %s", type(exc).__name__)
+            save_error = True
+
+        if save_error:
+            yield _sse_event(
+                "error", {"message": "Response generated but could not be saved. Please try again."}
+            )
 
         yield _sse_event("done", {})
 

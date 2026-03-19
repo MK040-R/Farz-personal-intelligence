@@ -20,6 +20,8 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from celery import chain
+
 from src.celery_app import celery_app as celery_app
 from src.config import settings  # noqa: F401 — imported for startup validation
 from src.database import get_client
@@ -304,17 +306,19 @@ def ingest_recording(
         user_id,
     )
 
-    # --- Chain downstream tasks: extraction then embedding ---
-    extract_from_conversation.delay(
-        conversation_id=conversation_id,
-        user_id=user_id,
-        user_jwt=user_jwt,
-    )
-    embed_conversation.delay(
-        conversation_id=conversation_id,
-        user_id=user_id,
-        user_jwt=user_jwt,
-    )
+    # --- Chain downstream tasks: extraction then embedding (ordered) ---
+    chain(
+        extract_from_conversation.si(
+            conversation_id=conversation_id,
+            user_id=user_id,
+            user_jwt=user_jwt,
+        ),
+        embed_conversation.si(
+            conversation_id=conversation_id,
+            user_id=user_id,
+            user_jwt=user_jwt,
+        ),
+    ).apply_async()
 
     return {
         "conversation_id": conversation_id,

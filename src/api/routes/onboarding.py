@@ -313,7 +313,7 @@ def import_status_aggregate(
             counts["pending"] += 1
         elif state == "progress":
             meta = result.info or {}
-            if meta.get("user_id") and meta["user_id"] != user_id:
+            if not meta.get("user_id") or meta["user_id"] != user_id:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Job not found")
             js = JobStatus(
                 job_id=job_id,
@@ -324,7 +324,7 @@ def import_status_aggregate(
             counts["processing"] += 1
         elif state == "success":
             task_result: dict[str, Any] = result.result if isinstance(result.result, dict) else {}
-            if task_result.get("user_id") and task_result["user_id"] != user_id:
+            if not task_result.get("user_id") or task_result["user_id"] != user_id:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Job not found")
             js = JobStatus(
                 job_id=job_id,
@@ -381,7 +381,7 @@ def import_status(
 
     if state == "progress":
         meta = result.info or {}
-        if meta.get("user_id") and meta["user_id"] != user_id:
+        if not meta.get("user_id") or meta["user_id"] != user_id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Job not found")
         return JobStatus(
             job_id=job_id,
@@ -391,7 +391,7 @@ def import_status(
 
     if state == "success":
         task_result: dict[str, Any] = result.result if isinstance(result.result, dict) else {}
-        if task_result.get("user_id") and task_result["user_id"] != user_id:
+        if not task_result.get("user_id") or task_result["user_id"] != user_id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Job not found")
         return JobStatus(
             job_id=job_id,
