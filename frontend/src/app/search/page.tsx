@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   ask,
@@ -64,7 +64,7 @@ const RESULT_TYPE_LINKS: Record<SearchResult["result_type"], (r: SearchResult) =
   segment: (r) => `/meetings/${r.conversation_id}`,
 };
 
-export default function SearchPage() {
+function SearchPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [mode, setMode] = useState<SearchMode>("find");
@@ -526,5 +526,17 @@ export default function SearchPage() {
         )}
       </section>
     </div>
+  );
+}
+
+function SearchPageFallback() {
+  return <section className="card p-4 text-sm text-ink-secondary">Loading search...</section>;
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense fallback={<SearchPageFallback />}>
+      <SearchPageContent />
+    </Suspense>
   );
 }

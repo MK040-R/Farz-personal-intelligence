@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 
 import { MeetingCategoryBadge } from "@/components/MeetingCategoryBadge";
 import { getConversations, type ConversationSummary } from "@/lib/api";
@@ -61,7 +61,7 @@ const MEETING_GROUP_LABELS: Record<MeetingGroupKey, string> = {
   earlier: "Earlier",
 };
 
-export default function MeetingsPage() {
+function MeetingsPageContent() {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -288,5 +288,17 @@ export default function MeetingsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function MeetingsPageFallback() {
+  return <section className="card p-4 text-sm text-ink-secondary">Loading meetings...</section>;
+}
+
+export default function MeetingsPage() {
+  return (
+    <Suspense fallback={<MeetingsPageFallback />}>
+      <MeetingsPageContent />
+    </Suspense>
   );
 }
