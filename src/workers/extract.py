@@ -25,6 +25,7 @@ from src.cache_utils import bump_user_cache_version
 from src.celery_app import celery_app
 from src.commitment_utils import sanitize_commitment_rows
 from src.database import get_client
+from src.entity_utils import group_entity_rows
 from src.topic_cluster_store import (
     assign_cluster_for_topic,
     assign_clusters_to_existing_topics,
@@ -39,6 +40,7 @@ from src.topic_cluster_store import (
     upsert_topic_arcs_for_clusters,
 )
 from src.topic_utils import sanitize_topic_rows
+from src.workers.tasks import sync_calendar_artifacts
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +62,7 @@ def extract_from_conversation(
     conversation_id: str,
     user_id: str,
     user_jwt: str,
+    google_refresh_token: str | None = None,
 ) -> dict[str, Any]:
     """Extract topics, commitments, and entities from a stored conversation.
 
@@ -70,6 +73,8 @@ def extract_from_conversation(
         conversation_id: UUID of the conversation to process.
         user_id: Supabase user UUID (for per-user isolation validation).
         user_jwt: Supabase JWT — used for all DB operations (RLS enforced).
+        google_refresh_token: Optional Google refresh token used to sync
+            calendar links and recurring briefs after indexing.
 
     Returns:
         dict with conversation_id, topic_count, commitment_count, entity_count.
@@ -114,6 +119,21 @@ def extract_from_conversation(
         )
         db.table("conversations").update({"status": "indexed"}).eq("id", conversation_id).execute()
         bump_user_cache_version(user_id)
+        if google_refresh_token:
+            try:
+                sync_calendar_artifacts.delay(
+                    user_id=user_id,
+                    user_jwt=user_jwt,
+                    google_refresh_token=google_refresh_token,
+                    conversation_id=conversation_id,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Post-index calendar sync dispatch failed — conversation=%s user=%s error=%s",
+                    conversation_id,
+                    user_id,
+                    type(exc).__name__,
+                )
         return {
             "conversation_id": conversation_id,
             "topic_count": 0,
@@ -327,6 +347,17 @@ def extract_from_conversation(
     db.table("conversations").update({"status": "indexed"}).eq("id", conversation_id).execute()
 
     # --- Update user_index counts ---
+    current_cluster_count = len(load_topic_clusters(db, user_id, min_conversations=1))
+    entity_rows = (
+        db.table("entities")
+        .select("name, type, mentions, conversation_id")
+        .eq("user_id", user_id)
+        .execute()
+        .data
+        or []
+    )
+    current_entity_count = len(group_entity_rows(entity_rows))
+
     existing_index = (
         db.table("user_index")
         .select("topic_count, commitment_count")
@@ -337,8 +368,9 @@ def extract_from_conversation(
         current = existing_index.data[0]
         db.table("user_index").update(
             {
-                "topic_count": current["topic_count"] + len(sanitized_topic_rows),
+                "topic_count": current_cluster_count,
                 "commitment_count": current["commitment_count"] + len(sanitized_commitment_rows),
+                "entity_count": current_entity_count,
                 "last_updated": datetime.now(tz=UTC).isoformat(),
             }
         ).eq("user_id", user_id).execute()
@@ -352,6 +384,22 @@ def extract_from_conversation(
         user_id,
     )
     bump_user_cache_version(user_id)
+
+    if google_refresh_token:
+        try:
+            sync_calendar_artifacts.delay(
+                user_id=user_id,
+                user_jwt=user_jwt,
+                google_refresh_token=google_refresh_token,
+                conversation_id=conversation_id,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Post-index calendar sync dispatch failed — conversation=%s user=%s error=%s",
+                conversation_id,
+                user_id,
+                type(exc).__name__,
+            )
 
     return {
         "conversation_id": conversation_id,
@@ -419,6 +467,13 @@ def recluster_topics_for_user(
         user_id,
         final_cluster_ids,
     )
+
+    db.table("user_index").update(
+        {
+            "topic_count": len(final_cluster_ids),
+            "last_updated": datetime.now(tz=UTC).isoformat(),
+        }
+    ).eq("user_id", user_id).execute()
 
     bump_user_cache_version(user_id)
     logger.info(

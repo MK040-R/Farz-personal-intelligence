@@ -1,4 +1,4 @@
-"""Unit tests for live dashboard index stats."""
+"""Unit tests for dashboard index stats."""
 
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -27,47 +27,23 @@ def _clear_auth() -> None:
     app.dependency_overrides.pop(get_current_user, None)
 
 
-def _make_db() -> MagicMock:
-    user_index_table = MagicMock()
-    user_index_table.select.return_value.eq.return_value.execute.return_value.data = [
-        {
-            "conversation_count": 0,
-            "topic_count": 0,
-            "commitment_count": 0,
-            "last_updated": "2026-03-12T10:00:00+00:00",
-        }
-    ]
+def _make_chain(data: list[dict[str, Any]]) -> MagicMock:
+    chain = MagicMock()
+    chain.execute.return_value = MagicMock(data=data)
+    for method_name in ("select", "eq"):
+        getattr(chain, method_name).return_value = chain
+    return chain
 
-    conversations_table = MagicMock()
-    conversations_table.select.return_value.eq.return_value.execute.return_value.count = 7
 
-    commitments_table = MagicMock()
-    commitments_table.select.return_value.eq.return_value.execute.return_value.count = 5
-
-    entities_table = MagicMock()
-    entities_table.select.return_value.eq.return_value.execute.return_value.data = [
-        {"name": "Opus", "type": "product", "mentions": 3, "conversation_id": "conv-1"},
-        {"name": "Opus", "type": "company", "mentions": 2, "conversation_id": "conv-2"},
-        {"name": "N8", "type": "product", "mentions": 1, "conversation_id": "conv-3"},
-        {"name": "N8N", "type": "product", "mentions": 4, "conversation_id": "conv-4"},
-        {
-            "name": "Nabil Mansouri",
-            "type": "person",
-            "mentions": 2,
-            "conversation_id": "conv-5",
-        },
-        {"name": "Nabil", "type": "person", "mentions": 1, "conversation_id": "conv-6"},
-    ]
+def _make_db(index_row: dict[str, Any], entity_rows: list[dict[str, Any]] | None = None) -> MagicMock:
+    user_index_table = _make_chain([index_row])
+    entities_table = _make_chain(entity_rows or [])
 
     db = MagicMock()
 
     def _table_router(name: str) -> MagicMock:
         if name == "user_index":
             return user_index_table
-        if name == "conversations":
-            return conversations_table
-        if name == "commitments":
-            return commitments_table
         if name == "entities":
             return entities_table
         raise AssertionError(f"Unexpected table lookup: {name}")
@@ -112,9 +88,54 @@ class TestIndexStats:
     def teardown_method(self) -> None:
         _clear_auth()
 
-    def test_returns_live_counts_with_grouped_topics(self) -> None:
+    def test_returns_stored_counts_when_entity_count_is_present(self) -> None:
+        db = _make_db(
+            {
+                "conversation_count": 7,
+                "topic_count": 2,
+                "commitment_count": 5,
+                "entity_count": 3,
+                "last_updated": "2026-03-12T10:00:00+00:00",
+            }
+        )
+
+        with patch("src.api.routes.index_stats.get_client", return_value=db):
+            response = client.get("/index/stats")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "conversation_count": 7,
+            "topic_count": 2,
+            "commitment_count": 5,
+            "entity_count": 3,
+            "last_updated_at": "2026-03-12T10:00:00+00:00",
+        }
+
+    def test_falls_back_to_grouped_entities_when_entity_count_is_missing(self) -> None:
+        db = _make_db(
+            {
+                "conversation_count": 7,
+                "topic_count": 0,
+                "commitment_count": 5,
+                "last_updated": "2026-03-12T10:00:00+00:00",
+            },
+            entity_rows=[
+                {"name": "Opus", "type": "product", "mentions": 3, "conversation_id": "conv-1"},
+                {"name": "Opus", "type": "company", "mentions": 2, "conversation_id": "conv-2"},
+                {"name": "N8", "type": "product", "mentions": 1, "conversation_id": "conv-3"},
+                {"name": "N8N", "type": "product", "mentions": 4, "conversation_id": "conv-4"},
+                {
+                    "name": "Nabil Mansouri",
+                    "type": "person",
+                    "mentions": 2,
+                    "conversation_id": "conv-5",
+                },
+                {"name": "Nabil", "type": "person", "mentions": 1, "conversation_id": "conv-6"},
+            ],
+        )
+
         with (
-            patch("src.api.routes.index_stats.get_client", return_value=_make_db()),
+            patch("src.api.routes.index_stats.get_client", return_value=db),
             patch("src.api.routes.index_stats.load_topic_clusters", return_value=_CLUSTERS),
         ):
             response = client.get("/index/stats")

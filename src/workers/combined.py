@@ -19,4 +19,5 @@ from src.workers.tasks import (  # noqa: F401
     generate_brief,
     process_transcript,
     schedule_recurring_briefs,
+    sync_calendar_artifacts,
 )

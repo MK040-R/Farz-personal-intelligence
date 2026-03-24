@@ -14,11 +14,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from src.api.deps import get_current_user
+from src.cache_utils import build_user_cache_key, get_cached_json, set_cached_json
 from src.database import get_client
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+_UPCOMING_BRIEFS_CACHE_TTL_SECONDS = 60
 
 
 class BriefTopicArcOut(BaseModel):
@@ -167,13 +169,22 @@ async def get_upcoming_briefs(
     user_id: str = current_user["sub"]
     raw_jwt: str = current_user["_raw_jwt"]
     db = get_client(raw_jwt)
+    now = datetime.now(tz=UTC)
+    cache_key = build_user_cache_key(
+        user_id,
+        "upcoming_briefs",
+        {"bucket": now.strftime("%Y-%m-%dT%H:%M")},
+    )
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return [UpcomingBrief.model_validate(item) for item in cached]
 
     # --- Fetch upcoming calendar events ---
     upcoming_events: list[Any] = []
     try:
         token_rows = (
             db.table("user_index")
-            .select("google_access_token, google_refresh_token")
+            .select("google_access_token, google_refresh_token, topic_count")
             .eq("user_id", user_id)
             .execute()
         )
@@ -215,7 +226,44 @@ async def get_upcoming_briefs(
     if not upcoming_events:
         return []
 
-    now = datetime.now(tz=UTC)
+    event_ids = [str(getattr(event, "event_id", "")) for event in upcoming_events]
+    brief_rows = (
+        db.table("briefs")
+        .select("id, conversation_id, calendar_event_id, content, generated_at")
+        .eq("user_id", user_id)
+        .in_("calendar_event_id", event_ids)
+        .order("generated_at", desc=True)
+        .execute()
+    ).data or []
+    latest_brief_by_event: dict[str, dict[str, Any]] = {}
+    for row in brief_rows:
+        event_id = str(row.get("calendar_event_id") or "")
+        if event_id and event_id not in latest_brief_by_event:
+            latest_brief_by_event[event_id] = row
+
+    open_commitment_rows = (
+        db.table("commitments")
+        .select("id")
+        .eq("user_id", user_id)
+        .eq("status", "open")
+        .limit(200)
+        .execute()
+    ).data or []
+    open_commitments_count = len(open_commitment_rows)
+
+    token_row = token_rows.data[0] if token_rows.data else {}
+    related_topic_count = int(token_row.get("topic_count") or 0)
+    if related_topic_count == 0:
+        related_topic_rows = (
+            db.table("topics")
+            .select("id")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .limit(20)
+            .execute()
+        ).data or []
+        related_topic_count = len(related_topic_rows)
+
     results: list[UpcomingBrief] = []
 
     for event in upcoming_events:
@@ -225,60 +273,38 @@ async def get_upcoming_briefs(
 
         minutes_until = max(0, int((event_start - now).total_seconds() / 60))
 
-        # Check if brief exists for this calendar event
+        brief_row = latest_brief_by_event.get(event_id)
         brief_id: str | None = None
+        conversation_id: str | None = None
         preview = ""
-        brief_rows = (
-            db.table("briefs")
-            .select("id, content")
-            .eq("user_id", user_id)
-            .eq("calendar_event_id", event_id)
-            .order("generated_at", desc=True)
-            .limit(1)
-            .execute()
-        ).data or []
-
-        if brief_rows:
-            brief_id = str(brief_rows[0].get("id", ""))
-            content = str(brief_rows[0].get("content", ""))
+        if brief_row:
+            brief_id = str(brief_row.get("id", ""))
+            conversation_id_value = brief_row.get("conversation_id")
+            conversation_id = str(conversation_id_value) if conversation_id_value is not None else None
+            content = str(brief_row.get("content", ""))
             preview = content[:220].strip()
             if len(content) > 220:
                 preview = f"{preview}..."
 
-        # Count open commitments (user-wide, not event-specific — quick proxy)
-        open_commitment_rows = (
-            db.table("commitments")
-            .select("id")
-            .eq("user_id", user_id)
-            .eq("status", "open")
-            .limit(100)
-            .execute()
-        ).data or []
-
-        # Count recent topics
-        recent_topic_rows = (
-            db.table("topics")
-            .select("id")
-            .eq("user_id", user_id)
-            .order("created_at", desc=True)
-            .limit(20)
-            .execute()
-        ).data or []
-
         results.append(
             UpcomingBrief(
                 brief_id=brief_id,
-                conversation_id=None,
+                conversation_id=conversation_id,
                 calendar_event_id=event_id,
                 event_title=event_title,
                 event_start=event_start.isoformat(),
                 minutes_until_start=minutes_until,
                 preview=preview,
-                open_commitments_count=len(open_commitment_rows),
-                related_topic_count=len(recent_topic_rows),
+                open_commitments_count=open_commitments_count,
+                related_topic_count=related_topic_count,
             )
         )
 
+    set_cached_json(
+        cache_key,
+        [item.model_dump(mode="json") for item in results],
+        _UPCOMING_BRIEFS_CACHE_TTL_SECONDS,
+    )
     return results
 
 

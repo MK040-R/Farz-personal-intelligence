@@ -3,7 +3,6 @@ tests/test_calendar.py — Unit tests for calendar today briefing endpoint.
 
 Covers:
 - Google Calendar event fetch integration in GET /calendar/today
-- conversation ↔ calendar_event_id linking by meeting time
 - open commitments enrichment with conversation titles
 """
 
@@ -201,7 +200,7 @@ class TestCalendarTodayEndpoint:
         assert payload["recent_activity"][0]["conversation_id"] == "conv-2"
         assert payload["recent_connections"] == []
 
-    def test_links_unlinked_conversations_to_calendar_event(self) -> None:
+    def test_home_read_does_not_link_conversations(self) -> None:
         meeting_time = datetime(2026, 3, 10, 10, 0, tzinfo=UTC)
 
         db = _make_db_mock(
@@ -221,14 +220,6 @@ class TestCalendarTodayEndpoint:
         )
 
         today_events: list[CalendarEvent] = []
-        sync_events = [
-            CalendarEvent(
-                event_id="evt-123",
-                title="Matched Event",
-                start_time=meeting_time + timedelta(minutes=20),
-                attendees=["Murali <murali@example.com>"],
-            )
-        ]
 
         with (
             patch("src.api.routes.calendar.get_client", return_value=db),
@@ -238,7 +229,7 @@ class TestCalendarTodayEndpoint:
             ),
             patch(
                 "src.api.routes.calendar.list_calendar_events",
-                new=AsyncMock(side_effect=[today_events, sync_events]),
+                new=AsyncMock(return_value=today_events),
             ),
         ):
             response = client.get("/calendar/today")
@@ -246,7 +237,7 @@ class TestCalendarTodayEndpoint:
         assert response.status_code == 200
 
         conversations_table = db.table("conversations")
-        conversations_table.update.assert_called_with({"calendar_event_id": "evt-123"})
+        conversations_table.update.assert_not_called()
 
     def test_returns_400_when_refresh_token_missing(self) -> None:
         db = _make_db_mock(

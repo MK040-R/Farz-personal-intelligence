@@ -6,8 +6,6 @@ GET /calendar/today — dashboard context for the next two days.
 Phase 4 implementation:
 - refreshes Google Calendar access token using stored refresh token
 - fetches today's upcoming events from Google Calendar
-- links imported conversations to calendar events by meeting-time proximity
-- triggers recurring brief scheduling for eligible upcoming recurring meetings
 
 Phase 5 implementation:
 - returns recent indexed meeting activity for dashboard context
@@ -26,16 +24,11 @@ from src.cache_utils import build_user_cache_key, get_cached_json, set_cached_js
 from src.calendar_client import CalendarEvent, list_calendar_events
 from src.database import get_client
 from src.drive_client import refresh_access_token
-from src.workers.tasks import schedule_recurring_briefs
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 _TODAY_BRIEFING_CACHE_TTL_SECONDS = 60
-
-_MATCH_WINDOW_SECONDS = 8 * 60 * 60
-_CALENDAR_LINK_LOOKBACK_DAYS = 365
-_CALENDAR_LINK_LOOKAHEAD_DAYS = 30
 
 
 class UpcomingMeeting(BaseModel):
@@ -82,20 +75,6 @@ class TodayBriefing(BaseModel):
     open_commitments: list[OpenCommitment]
     recent_activity: list[RecentActivity]
     recent_connections: list[RecentConnection]
-
-
-def _parse_datetime(value: Any) -> datetime | None:
-    if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=UTC)
-    if not isinstance(value, str) or not value.strip():
-        return None
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
-
-
 def _get_google_tokens(db: Any, user_id: str) -> tuple[str, str]:
     rows = (
         db.table("user_index")
@@ -161,66 +140,6 @@ async def _load_calendar_events_with_refresh(
         time_max=time_max,
     )
     return refreshed_access_token, events
-
-
-def _best_match_event(
-    conversation_time: datetime,
-    events: list[CalendarEvent],
-    used_event_ids: set[str],
-) -> CalendarEvent | None:
-    best: tuple[float, CalendarEvent] | None = None
-    for event in events:
-        if event.event_id in used_event_ids:
-            continue
-        distance_seconds = abs((conversation_time - event.start_time).total_seconds())
-        if distance_seconds > _MATCH_WINDOW_SECONDS:
-            continue
-        if best is None or distance_seconds < best[0]:
-            best = (distance_seconds, event)
-    return best[1] if best else None
-
-
-def _sync_conversation_calendar_links(
-    db: Any,
-    user_id: str,
-    conversations: list[dict[str, Any]],
-    events: list[CalendarEvent],
-) -> int:
-    if not conversations or not events:
-        return 0
-
-    parsed_conversations: list[tuple[str, datetime]] = []
-    for row in conversations:
-        conversation_id = row.get("id")
-        if not isinstance(conversation_id, str) or not conversation_id.strip():
-            continue
-        meeting_date = _parse_datetime(row.get("meeting_date"))
-        if meeting_date is None:
-            continue
-        parsed_conversations.append((conversation_id, meeting_date))
-
-    parsed_conversations.sort(key=lambda item: item[1])
-
-    linked_count = 0
-    used_event_ids: set[str] = set()
-    for conversation_id, meeting_date in parsed_conversations:
-        match = _best_match_event(meeting_date, events, used_event_ids)
-        if match is None:
-            continue
-
-        (
-            db.table("conversations")
-            .update({"calendar_event_id": match.event_id})
-            .eq("user_id", user_id)
-            .eq("id", conversation_id)
-            .execute()
-        )
-        used_event_ids.add(match.event_id)
-        linked_count += 1
-
-    return linked_count
-
-
 def _load_recent_activity(db: Any, user_id: str, limit: int = 8) -> list[RecentActivity]:
     rows = (
         db.table("conversations")
@@ -393,7 +312,7 @@ async def get_today(
     access_token, refresh_token = _get_google_tokens(db, user_id)
 
     try:
-        active_access_token, today_events = await _load_calendar_events_with_refresh(
+        _, today_events = await _load_calendar_events_with_refresh(
             db,
             user_id,
             access_token,
@@ -414,71 +333,6 @@ async def get_today(
         ) from exc
 
     now = datetime.now(tz=UTC)
-
-    sync_start = now - timedelta(days=_CALENDAR_LINK_LOOKBACK_DAYS)
-    sync_end = now + timedelta(days=_CALENDAR_LINK_LOOKAHEAD_DAYS)
-    unlinked_result = (
-        db.table("conversations")
-        .select("id, meeting_date, calendar_event_id")
-        .eq("user_id", user_id)
-        .is_("calendar_event_id", "null")
-        .gte("meeting_date", sync_start.isoformat())
-        .lte("meeting_date", sync_end.isoformat())
-        .execute()
-    )
-    conversations_needing_links = unlinked_result.data or []
-
-    linked_count = 0
-    if conversations_needing_links:
-        conversation_times = [
-            parsed
-            for row in conversations_needing_links
-            if (parsed := _parse_datetime(row.get("meeting_date"))) is not None
-        ]
-        if conversation_times:
-            link_window_start = min(conversation_times) - timedelta(hours=12)
-            link_window_end = max(conversation_times) + timedelta(hours=12)
-
-            try:
-                sync_events = await list_calendar_events(
-                    active_access_token,
-                    time_min=link_window_start,
-                    time_max=link_window_end,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "Conversation/calendar linking skipped for user=%s due to fetch error: %s",
-                    user_id,
-                    type(exc).__name__,
-                )
-            else:
-                linked_count = _sync_conversation_calendar_links(
-                    db,
-                    user_id,
-                    conversations_needing_links,
-                    sync_events,
-                )
-                if linked_count:
-                    logger.info(
-                        "Calendar linking updated %d conversation rows for user=%s",
-                        linked_count,
-                        user_id,
-                    )
-
-    # Trigger user-scoped recurring-brief scheduling asynchronously.
-    # Failures here should not block the read endpoint.
-    try:
-        schedule_recurring_briefs.delay(
-            user_id=user_id,
-            user_jwt=raw_jwt,
-            google_refresh_token=refresh_token,
-        )
-    except Exception as exc:
-        logger.warning(
-            "Recurring brief scheduler dispatch failed for user=%s: %s",
-            user_id,
-            type(exc).__name__,
-        )
 
     # Open commitments (most recently created, capped at 20)
     commitments_result = (

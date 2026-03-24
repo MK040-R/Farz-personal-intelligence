@@ -1,22 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import {
-  getCommitments,
-  getHomeSummary,
-  getIndexStats,
-  getTodayBriefing,
-  getUpcomingBriefs,
-  isApiErrorStatus,
-  type ActionType,
-  type Commitment,
-  type HomeSummary,
-  type IndexStats,
-  type TodayBriefing,
-  type UpcomingBrief,
-} from "@/lib/api";
+import { getHomeDashboard, type HomeActionItem, type HomeDashboard } from "@/lib/api";
 import { formatDueDate, formatMeetingTitle } from "@/lib/presentation";
 
 const kpiCards = [
@@ -30,7 +17,7 @@ function ActionList({
   items,
   emptyLabel,
 }: {
-  items: Commitment[];
+  items: HomeActionItem[];
   emptyLabel: string;
 }) {
   if (items.length === 0) {
@@ -94,18 +81,13 @@ function formatUpcomingTime(value: string): string {
 }
 
 export default function HomePage() {
-  const [briefing, setBriefing] = useState<TodayBriefing | null>(null);
-  const [stats, setStats] = useState<IndexStats | null>(null);
-  const [homeSummary, setHomeSummary] = useState<HomeSummary | null>(null);
-  const [homeSummaryState, setHomeSummaryState] = useState<"loading" | "ready" | "hidden">("loading");
-  const [upcomingBrief, setUpcomingBrief] = useState<UpcomingBrief | null>(null);
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | "unsupported">("unsupported");
-  const [actions, setActions] = useState<Record<ActionType, Commitment[]>>({
-    commitment: [],
-    follow_up: [],
-  });
+  const [dashboard, setDashboard] = useState<HomeDashboard | null>(null);
+  const [notificationPermission, setNotificationPermission] = useState<
+    NotificationPermission | "unsupported"
+  >("unsupported");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const hasLoadedRef = useRef(false);
 
   useEffect(() => {
     if (typeof window === "undefined" || !("Notification" in window)) {
@@ -117,72 +99,20 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
+    if (hasLoadedRef.current) {
+      return;
+    }
+    hasLoadedRef.current = true;
+
     let mounted = true;
-
-    const loadSummary = async () => {
-      setHomeSummaryState("loading");
-      try {
-        const summaryData = await getHomeSummary();
-        if (!mounted) {
-          return;
-        }
-        if (summaryData.summary.trim()) {
-          setHomeSummary(summaryData);
-          setHomeSummaryState("ready");
-          return;
-        }
-      } catch {
-        // Hide the summary card silently if this optional endpoint fails.
-      }
-
-      if (mounted) {
-        setHomeSummary(null);
-        setHomeSummaryState("hidden");
-      }
-    };
-
-    const loadUpcomingBriefs = async () => {
-      try {
-        const upcoming = await getUpcomingBriefs();
-        if (!mounted) {
-          return;
-        }
-
-        const nextBrief = [...upcoming]
-          .filter((item) => item.minutes_until_start <= 60 && item.brief_id)
-          .sort((left, right) => left.minutes_until_start - right.minutes_until_start)[0] ?? null;
-        setUpcomingBrief(nextBrief);
-      } catch (loadError) {
-        if (!mounted) {
-          return;
-        }
-
-        if (isApiErrorStatus(loadError, [404, 405, 501, 503])) {
-          setUpcomingBrief(null);
-          return;
-        }
-
-        setUpcomingBrief(null);
-      }
-    };
 
     const load = async () => {
       setLoading(true);
       setError(null);
       try {
-        const [todayData, statsData, commitmentsData, followUpsData] = await Promise.all([
-          getTodayBriefing(),
-          getIndexStats(),
-          getCommitments("open", { actionType: "commitment", limit: 3 }),
-          getCommitments("open", { actionType: "follow_up", limit: 3 }),
-        ]);
+        const payload = await getHomeDashboard();
         if (mounted) {
-          setBriefing(todayData);
-          setStats(statsData);
-          setActions({
-            commitment: commitmentsData,
-            follow_up: followUpsData,
-          });
+          setDashboard(payload);
         }
       } catch (loadError) {
         if (mounted) {
@@ -195,14 +125,14 @@ export default function HomePage() {
       }
     };
 
-    void loadSummary();
-    void loadUpcomingBriefs();
     void load();
 
     return () => {
       mounted = false;
     };
   }, []);
+
+  const upcomingBrief = dashboard?.prep_push ?? null;
 
   useEffect(() => {
     if (
@@ -236,7 +166,7 @@ export default function HomePage() {
     return <section className="card p-4 text-sm text-ink-secondary">Loading home...</section>;
   }
 
-  if (error || !briefing || !stats) {
+  if (error || !dashboard) {
     return (
       <section className="card border border-emphasis bg-accent-subtle p-4 text-sm text-accent">
         {error ?? "Home unavailable"}
@@ -326,31 +256,27 @@ export default function HomePage() {
         </section>
       )}
 
-      {homeSummaryState !== "hidden" && (
+      {dashboard.summary.summary.trim() && (
         <section className="card p-6">
-          {homeSummaryState === "loading" ? (
-            <div className="space-y-3 animate-pulse">
-              <div className="h-4 w-28 rounded bg-bg-control" />
-              <div className="h-4 w-full rounded bg-bg-control" />
-              <div className="h-4 w-4/5 rounded bg-bg-control" />
-            </div>
-          ) : homeSummary ? (
-            <div>
-              <h2 className="text-lg font-semibold">Quick Summary</h2>
-              <p className="mt-3 text-sm leading-7 text-ink-secondary">{homeSummary.summary}</p>
-              <p className="mt-4 text-xs text-ink-tertiary">
-                {formatSummaryUpdatedAt(homeSummary.generated_at)}
-              </p>
-            </div>
-          ) : null}
+          <div>
+            <h2 className="text-lg font-semibold">Quick Summary</h2>
+            <p className="mt-3 text-sm leading-7 text-ink-secondary">{dashboard.summary.summary}</p>
+            <p className="mt-4 text-xs text-ink-tertiary">
+              {formatSummaryUpdatedAt(dashboard.summary.generated_at)}
+            </p>
+          </div>
         </section>
       )}
 
       <section className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
         {kpiCards.map((card) => (
-          <Link key={card.key} href={card.href} className="card block p-4 transition hover:border-emphasis">
+          <Link
+            key={card.key}
+            href={card.href}
+            className="card block p-4 transition hover:border-emphasis"
+          >
             <p className="text-ink-tertiary">{card.label}</p>
-            <p className="mono mt-1 text-xl text-ink-primary">{stats[card.key]}</p>
+            <p className="mono mt-1 text-xl text-ink-primary">{dashboard.stats[card.key]}</p>
           </Link>
         ))}
       </section>
@@ -364,7 +290,7 @@ export default function HomePage() {
             </Link>
           </div>
           <div className="mt-3 space-y-2">
-            {briefing.upcoming_meetings.map((meeting) => (
+            {dashboard.today.upcoming_meetings.map((meeting) => (
               <div
                 key={meeting.id}
                 className="grid grid-cols-[92px_minmax(0,1fr)] gap-3 rounded border border-soft px-3 py-2"
@@ -379,7 +305,7 @@ export default function HomePage() {
                 </p>
               </div>
             ))}
-            {briefing.upcoming_meetings.length === 0 && (
+            {dashboard.today.upcoming_meetings.length === 0 && (
               <p className="text-sm text-ink-tertiary">No upcoming meetings in the next two days.</p>
             )}
           </div>
@@ -399,7 +325,7 @@ export default function HomePage() {
                 Commitments
               </p>
               <ActionList
-                items={actions.commitment}
+                items={dashboard.actions.commitment}
                 emptyLabel="No open commitments in the current dataset."
               />
             </div>
@@ -408,7 +334,7 @@ export default function HomePage() {
                 Follow-ups
               </p>
               <ActionList
-                items={actions.follow_up}
+                items={dashboard.actions.follow_up}
                 emptyLabel="No open follow-ups in the current dataset."
               />
             </div>

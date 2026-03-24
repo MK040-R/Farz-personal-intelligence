@@ -20,7 +20,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.calendar_client import CalendarEvent
-from src.workers.tasks import generate_brief, process_transcript, schedule_recurring_briefs
+from src.workers.tasks import (
+    generate_brief,
+    process_transcript,
+    schedule_recurring_briefs,
+    sync_calendar_artifacts,
+)
 
 # ---------------------------------------------------------------------------
 # process_transcript — unit tests
@@ -298,6 +303,72 @@ class TestGenerateBriefUnit:
         assert result["topic_arc_count"] == 0
         assert result["commitment_count"] == 0
         assert result["connection_count"] == 0
+
+
+@pytest.mark.unit
+class TestSyncCalendarArtifactsUnit:
+    @staticmethod
+    def _make_db_mock() -> MagicMock:
+        db = MagicMock()
+
+        user_index_table = MagicMock()
+        user_index_table.update.return_value.eq.return_value.execute.return_value = MagicMock()
+
+        conversations_table = MagicMock()
+        conversations_table.select.return_value.eq.return_value.eq.return_value.is_.return_value.execute.return_value.data = [
+            {
+                "id": "conv-1",
+                "meeting_date": "2026-03-10T10:00:00+00:00",
+                "calendar_event_id": None,
+            }
+        ]
+        conversations_table.update.return_value.eq.return_value.eq.return_value.execute.return_value = (
+            MagicMock()
+        )
+
+        def _table_router(name: str) -> MagicMock:
+            if name == "user_index":
+                return user_index_table
+            if name == "conversations":
+                return conversations_table
+            raise AssertionError(f"Unexpected table lookup: {name}")
+
+        db.table.side_effect = _table_router
+        return db
+
+    def test_links_conversation_and_dispatches_scheduler(self, eager_app: Any) -> None:
+        event = CalendarEvent(
+            event_id="evt-123",
+            title="Matched Event",
+            start_time=datetime(2026, 3, 10, 10, 20, tzinfo=UTC),
+            attendees=[],
+        )
+        db = self._make_db_mock()
+
+        with (
+            patch("src.workers.tasks.get_client", return_value=db),
+            patch("src.workers.tasks.refresh_access_token_sync", return_value="access-token"),
+            patch("src.workers.tasks.list_calendar_events_sync", return_value=[event]),
+            patch("src.workers.tasks.schedule_recurring_briefs.delay") as mock_schedule_delay,
+        ):
+            result = cast(
+                dict[str, Any],
+                sync_calendar_artifacts.delay(
+                    user_id="u-abc",
+                    user_jwt="jwt-token",
+                    google_refresh_token="refresh-token",
+                    conversation_id="conv-1",
+                ).get(),
+            )
+
+        db.table("conversations").update.assert_called_with({"calendar_event_id": "evt-123"})
+        mock_schedule_delay.assert_called_once_with(
+            user_id="u-abc",
+            user_jwt="jwt-token",
+            google_refresh_token="refresh-token",
+        )
+        assert result["linked_count"] == 1
+        assert result["scheduler_dispatched"] is True
 
 
 @pytest.mark.unit

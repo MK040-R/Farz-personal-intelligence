@@ -264,6 +264,29 @@ export type HomeSummary = {
   generated_at: string;
 };
 
+export type HomeActionItem = {
+  id: string;
+  text: string;
+  owner: string;
+  due_date: string | null;
+  conversation_title: string;
+};
+
+export type HomeActions = {
+  commitment: HomeActionItem[];
+  follow_up: HomeActionItem[];
+};
+
+export type HomeDashboard = {
+  today: {
+    upcoming_meetings: TodayBriefing["upcoming_meetings"];
+  };
+  stats: IndexStats;
+  summary: HomeSummary;
+  prep_push: UpcomingBrief | null;
+  actions: HomeActions;
+};
+
 export type BriefCitation = {
   segment_id: string;
   conversation_id: string;
@@ -784,6 +807,10 @@ export async function getTodayBriefing(): Promise<TodayBriefing> {
 
 export async function getHomeSummary(): Promise<HomeSummary> {
   return request<HomeSummary>("/home/summary", { method: "GET" });
+}
+
+export async function getHomeDashboard(): Promise<HomeDashboard> {
+  return request<HomeDashboard>("/home/dashboard", { method: "GET" });
 }
 
 export async function getEntities(): Promise<EntitySummary[]> {

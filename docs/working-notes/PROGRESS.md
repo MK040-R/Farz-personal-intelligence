@@ -1,7 +1,7 @@
 # Pocket Nori — Build Progress
 
 > This document is written for non-technical readers. It is updated automatically after every completed task.
-> Last updated: 2026-03-17 (Waves B and D frontend shipped locally; backend rollout pending)
+> Last updated: 2026-03-24 (Home read path made lighter; calendar sync moved off dashboard request)
 
 ---
 
@@ -23,6 +23,34 @@ Building a software product from scratch happens in stages, like constructing a 
 | **Phase 2 — Full Product** | Interior design, finishing, furniture | The complete dashboard — topic timelines, pre-meeting briefs, commitment tracker, cross-meeting connections |
 
 **Phases 0, 1, 2, 3, 4, and 5 are complete.** Current execution focus is **MVP topic intelligence cleanup**, with the stored cluster model implemented locally and awaiting deployment + per-user backfill.
+
+---
+
+## ✅ Latest Task Update — 2026-03-24 (Lighter Home Request Path)
+
+### What changed
+
+- The Home dashboard request (`GET /calendar/today`) was simplified so it now only reads the data needed to render the page
+- Hidden maintenance work was removed from the Home request path:
+  - conversation ↔ calendar event linking
+  - recurring brief scheduler dispatch
+- That maintenance work now runs in the background instead:
+  - after Google login / reconnect
+  - after a newly imported conversation finishes extraction and becomes indexed
+
+### Why this matters
+
+- Opening Home should only pay for the information the user actually sees
+- This reduces unnecessary backend work during page load
+- Calendar linking and recurring brief preparation still happen, but off the dashboard request path
+
+### Validation
+
+- Focused unit tests passed:
+  - `tests/test_calendar.py`
+  - `tests/test_extract.py`
+  - `tests/test_auth_routes.py`
+  - `tests/test_workers.py`
 
 ---
 
@@ -790,3 +818,27 @@ All 326 Linear issues have been created across 5 projects. The board is now comp
 - Deploy the entity-normalization batch
 - Verify `/entities` and dashboard counts match on production
 - Decide whether already-broken historical topic URLs need a redirect/alias layer
+
+---
+
+## ✅ 2026-03-24 — Home dashboard read path collapsed and shell hydration reduced
+
+### What changed
+
+- Added a single cached `/home/dashboard` payload that reuses one calendar read for meetings, summary context, prep-push selection, stats, and action lists instead of fan-out requests from the browser.
+- Stopped recomputing dashboard stats live on every read by using stored `user_index` counters with a guarded fallback while write paths now keep `conversation_count`, `topic_count`, `commitment_count`, and `entity_count` fresher.
+- Moved the Home page to one client fetch, added a dev-mode duplicate-fetch guard, and split the global shell into a mostly static server-rendered frame with small client islands for nav, search, and session controls.
+- Replaced font CSS `@import` with `next/font` and added a Next workspace-root fix via `outputFileTracingRoot`.
+- Added migration `013_dashboard_read_path.sql` for the new `entity_count` column, SQL counter backfill, and dashboard-oriented composite indexes.
+
+### Validation
+
+- `./.venv/bin/python -m pytest tests/test_home.py tests/test_index_stats.py tests/test_calendar.py tests/test_extract.py tests/test_auth_routes.py tests/test_workers.py tests/test_upcoming_briefs.py -q` → **48 passed, 2 skipped**
+- `npx tsc --noEmit` in `frontend/` → **pass**
+- `npm run build` in `frontend/` → blocked in sandbox because `next/font/google` could not resolve `fonts.googleapis.com`
+
+### Next focus
+
+- Apply migration `013_dashboard_read_path.sql`
+- Validate Home load time in a real networked build/runtime environment
+- Decide whether to backfill `entity_count` eagerly for all production users or rely on fallback until fresh writes land

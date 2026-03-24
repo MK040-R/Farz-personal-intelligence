@@ -11,6 +11,7 @@ from typing import Any
 
 from src import llm_client
 from src.calendar_client import CalendarEvent, list_calendar_events_sync
+from src.calendar_sync import sync_conversation_calendar_links
 from src.celery_app import celery_app as celery_app
 from src.database import get_client
 from src.drive_client import refresh_access_token_sync
@@ -20,6 +21,9 @@ logger = logging.getLogger(__name__)
 _BRIEF_LOOKAHEAD_MINUTES = 24 * 60
 _BRIEF_OFFSET_MINUTES = 12
 _RECURRING_HISTORY_LOOKBACK_DAYS = 180
+_CALENDAR_LINK_LOOKBACK_DAYS = 365
+_CALENDAR_LINK_LOOKAHEAD_DAYS = 30
+_CALENDAR_LINK_PADDING_HOURS = 12
 
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=30)  # type: ignore[untyped-decorator]
@@ -163,6 +167,115 @@ def _parse_iso_datetime(value: Any) -> datetime | None:
     except ValueError:
         return None
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+@celery_app.task(bind=True, max_retries=2, default_retry_delay=120)  # type: ignore[untyped-decorator]
+def sync_calendar_artifacts(
+    self: Any,
+    user_id: str,
+    user_jwt: str,
+    google_refresh_token: str,
+    conversation_id: str | None = None,
+) -> dict[str, Any]:
+    """Refresh calendar context off the request path.
+
+    This task links missing conversation.calendar_event_id values and then
+    dispatches recurring-brief scheduling. It is used for post-login catch-up
+    sync and after newly indexed conversations complete extraction.
+    """
+    if not user_id:
+        raise ValueError("user_id is required and must be non-empty")
+    if not user_jwt:
+        raise ValueError("user_jwt is required and must be non-empty")
+    if not google_refresh_token:
+        raise ValueError("google_refresh_token is required and must be non-empty")
+
+    db = get_client(user_jwt)
+    now = datetime.now(tz=UTC)
+
+    self.update_state(state="PROGRESS", meta={"status": "refreshing_calendar"})
+    access_token = refresh_access_token_sync(google_refresh_token)
+    (
+        db.table("user_index")
+        .update({"google_access_token": access_token})
+        .eq("user_id", user_id)
+        .execute()
+    )
+
+    if conversation_id:
+        conversations_to_link = (
+            db.table("conversations")
+            .select("id, meeting_date, calendar_event_id")
+            .eq("user_id", user_id)
+            .eq("id", conversation_id)
+            .is_("calendar_event_id", "null")
+            .execute()
+        ).data or []
+    else:
+        sync_start = now - timedelta(days=_CALENDAR_LINK_LOOKBACK_DAYS)
+        sync_end = now + timedelta(days=_CALENDAR_LINK_LOOKAHEAD_DAYS)
+        conversations_to_link = (
+            db.table("conversations")
+            .select("id, meeting_date, calendar_event_id")
+            .eq("user_id", user_id)
+            .is_("calendar_event_id", "null")
+            .gte("meeting_date", sync_start.isoformat())
+            .lte("meeting_date", sync_end.isoformat())
+            .execute()
+        ).data or []
+
+    linked_count = 0
+    if conversations_to_link:
+        conversation_times = [
+            parsed
+            for row in conversations_to_link
+            if (parsed := _parse_iso_datetime(row.get("meeting_date"))) is not None
+        ]
+        if conversation_times:
+            self.update_state(state="PROGRESS", meta={"status": "loading_calendar"})
+            link_window_start = min(conversation_times) - timedelta(hours=_CALENDAR_LINK_PADDING_HOURS)
+            link_window_end = max(conversation_times) + timedelta(hours=_CALENDAR_LINK_PADDING_HOURS)
+            sync_events = list_calendar_events_sync(
+                access_token,
+                time_min=link_window_start,
+                time_max=link_window_end,
+            )
+            linked_count = sync_conversation_calendar_links(
+                db,
+                user_id,
+                conversations_to_link,
+                sync_events,
+            )
+
+    scheduler_dispatched = False
+    try:
+        schedule_recurring_briefs.delay(
+            user_id=user_id,
+            user_jwt=user_jwt,
+            google_refresh_token=google_refresh_token,
+        )
+        scheduler_dispatched = True
+    except Exception as exc:
+        logger.warning(
+            "Calendar sync could not dispatch recurring brief scheduler for user=%s: %s",
+            user_id,
+            type(exc).__name__,
+        )
+
+    logger.info(
+        "Calendar sync completed user=%s linked=%d dispatched_scheduler=%s conversation_id=%s",
+        user_id,
+        linked_count,
+        scheduler_dispatched,
+        conversation_id or "",
+    )
+    return {
+        "user_id": user_id,
+        "conversation_id": conversation_id,
+        "linked_count": linked_count,
+        "scheduler_dispatched": scheduler_dispatched,
+        "status": "completed",
+    }
 
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=30)  # type: ignore[untyped-decorator]

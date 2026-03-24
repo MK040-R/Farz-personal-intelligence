@@ -477,6 +477,49 @@ class TestExtractHappyPath:
 
 
 @pytest.mark.unit
+class TestExtractCalendarSyncDispatch:
+    def test_dispatches_calendar_sync_when_refresh_token_present(self, eager_extract: Any) -> None:
+        from src.llm_client import CommitmentList, EntityList, TopicList
+
+        segments = [_make_segment("Hello.")]
+
+        with (
+            patch("src.workers.extract.get_client") as mock_get_client,
+            patch(
+                "src.workers.extract.llm_client.extract_topics",
+                return_value=TopicList(topics=[]),
+            ),
+            patch(
+                "src.workers.extract.llm_client.extract_commitments",
+                return_value=CommitmentList(commitments=[]),
+            ),
+            patch(
+                "src.workers.extract.llm_client.extract_entities",
+                return_value=EntityList(entities=[]),
+            ),
+            patch("src.workers.extract.load_cluster_registry", return_value=[]),
+            patch("src.workers.extract.refresh_clusters_metadata", return_value=[]),
+            patch("src.workers.extract.upsert_topic_arcs_for_clusters"),
+            patch("src.workers.extract.sync_calendar_artifacts.delay") as mock_sync_delay,
+        ):
+            mock_get_client.return_value = _make_full_db_mock(segments=segments)
+
+            extract_from_conversation.delay(
+                conversation_id="conv-1",
+                user_id="user-1",
+                user_jwt="jwt-token",
+                google_refresh_token="refresh-token",
+            ).get()
+
+        mock_sync_delay.assert_called_once_with(
+            user_id="user-1",
+            user_jwt="jwt-token",
+            google_refresh_token="refresh-token",
+            conversation_id="conv-1",
+        )
+
+
+@pytest.mark.unit
 class TestReclusterTopics:
     def test_reclusters_existing_topics(self, eager_extract: Any) -> None:
         fake_cluster = SimpleNamespace(id="cluster-1")

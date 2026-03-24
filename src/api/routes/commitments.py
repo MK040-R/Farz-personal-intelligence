@@ -545,6 +545,20 @@ def create_commitment(
         )
 
     created = insert_result.data[0]
+    existing_index = (
+        db.table("user_index")
+        .select("commitment_count")
+        .eq("user_id", user_id)
+        .execute()
+    )
+    if existing_index.data:
+        current_commitment_count = int(existing_index.data[0].get("commitment_count") or 0)
+        db.table("user_index").update(
+            {
+                "commitment_count": current_commitment_count + 1,
+                "last_updated": datetime.now(tz=UTC).isoformat(),
+            }
+        ).eq("user_id", user_id).execute()
     bump_user_cache_version(user_id)
     logger.info("Manual commitment created — id=%s user=%s", new_id, user_id)
 

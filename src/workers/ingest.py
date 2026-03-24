@@ -294,10 +294,21 @@ def ingest_recording(
         ]
         db.table("transcript_segments").insert(segments).execute()
 
-    # --- Step 5: Update user_index last_updated ---
-    db.table("user_index").update({"last_updated": datetime.now(tz=UTC).isoformat()}).eq(
-        "user_id", user_id
-    ).execute()
+    # --- Step 5: Update user_index conversation_count + last_updated ---
+    existing_index = (
+        db.table("user_index")
+        .select("conversation_count")
+        .eq("user_id", user_id)
+        .execute()
+    )
+    if existing_index.data:
+        current_conversation_count = int(existing_index.data[0].get("conversation_count") or 0)
+        db.table("user_index").update(
+            {
+                "conversation_count": current_conversation_count + 1,
+                "last_updated": datetime.now(tz=UTC).isoformat(),
+            }
+        ).eq("user_id", user_id).execute()
 
     logger.info(
         "Ingest complete — conversation=%s segments=%d user=%s",
@@ -312,6 +323,7 @@ def ingest_recording(
             conversation_id=conversation_id,
             user_id=user_id,
             user_jwt=user_jwt,
+            google_refresh_token=google_refresh_token,
         ),
         embed_conversation.si(
             conversation_id=conversation_id,

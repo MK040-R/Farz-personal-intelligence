@@ -23,6 +23,7 @@ from supabase import create_client
 from src.api.deps import get_current_user
 from src.config import settings
 from src.database import get_client
+from src.workers.tasks import sync_calendar_artifacts
 
 logger = logging.getLogger(__name__)
 
@@ -241,6 +242,20 @@ async def callback(
     except Exception as exc:
         # Non-fatal: token storage failing should not block login.
         logger.error("Failed to upsert user_index for user=%s: %s", user.id, type(exc).__name__)
+
+    if google_refresh_token:
+        try:
+            sync_calendar_artifacts.delay(
+                user_id=str(user.id),
+                user_jwt=session.access_token,
+                google_refresh_token=google_refresh_token,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Calendar sync dispatch failed during login for user=%s: %s",
+                user.id,
+                type(exc).__name__,
+            )
 
     # --- Set HttpOnly session cookies and redirect to frontend ---
     redirect = RedirectResponse(url=f"{settings.frontend_origin}/onboarding")
