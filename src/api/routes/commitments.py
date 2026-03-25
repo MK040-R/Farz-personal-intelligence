@@ -23,6 +23,7 @@ from src.cache_utils import (
     set_cached_json,
 )
 from src.database import get_client
+from src.topic_node_store import TOPIC_NODE_FOREIGN_KEY_COLUMN, load_topic_node_label_map
 from src.topic_utils import clean_topic_label
 
 logger = logging.getLogger(__name__)
@@ -81,23 +82,21 @@ def _parse_iso_timestamp(value: str | None) -> datetime | None:
 
 def _build_topic_labels_by_conversation(
     topic_rows: list[dict[str, Any]],
-    cluster_rows: list[dict[str, Any]],
+    topic_node_rows: list[dict[str, Any]],
 ) -> dict[str, list[str]]:
     if not topic_rows:
         return {}
 
-    cluster_map = {
-        str(row["id"]): str(row.get("canonical_label") or "")
-        for row in cluster_rows
-        if row.get("id")
+    topic_node_map = {
+        str(row["id"]): str(row.get("label") or "") for row in topic_node_rows if row.get("id")
     }
     conversation_labels: dict[str, list[str]] = {}
     for row in topic_rows:
         conversation_id = str(row.get("conversation_id") or "")
         if not conversation_id:
             continue
-        cluster_id = str(row.get("cluster_id") or "")
-        label = cluster_map.get(cluster_id) or clean_topic_label(str(row.get("label") or ""))
+        topic_node_id = str(row.get(TOPIC_NODE_FOREIGN_KEY_COLUMN) or "")
+        label = topic_node_map.get(topic_node_id) or clean_topic_label(str(row.get("label") or ""))
         if not label:
             continue
         conversation_labels.setdefault(conversation_id, [])
@@ -250,24 +249,23 @@ def list_commitments(
     conv_map = {str(c["id"]): c for c in conv_rows if c.get("id")}
     topic_rows = (
         db.table("topics")
-        .select("id, cluster_id, label, conversation_id")
+        .select(f"id, {TOPIC_NODE_FOREIGN_KEY_COLUMN}, label, conversation_id")
         .eq("user_id", user_id)
         .in_("conversation_id", conv_ids)
         .execute()
     ).data or []
-    cluster_ids = sorted(
-        {str(row["cluster_id"]) for row in topic_rows if row.get("cluster_id") is not None}
+    topic_node_ids = sorted(
+        {
+            str(row[TOPIC_NODE_FOREIGN_KEY_COLUMN])
+            for row in topic_rows
+            if row.get(TOPIC_NODE_FOREIGN_KEY_COLUMN) is not None
+        }
     )
-    cluster_rows: list[dict[str, Any]] = []
-    if cluster_ids:
-        cluster_rows = (
-            db.table("topic_clusters")
-            .select("id, canonical_label")
-            .eq("user_id", user_id)
-            .in_("id", cluster_ids)
-            .execute()
-        ).data or []
-    topic_labels_by_conversation = _build_topic_labels_by_conversation(topic_rows, cluster_rows)
+    topic_node_labels = load_topic_node_label_map(db, user_id, topic_node_ids)
+    topic_node_rows = [
+        {"id": node_id, "label": label} for node_id, label in topic_node_labels.items()
+    ]
+    topic_labels_by_conversation = _build_topic_labels_by_conversation(topic_rows, topic_node_rows)
 
     filtered_rows: list[dict[str, Any]] = []
     for commitment in commitments:
@@ -427,26 +425,25 @@ def update_commitment(
 
     topic_rows = (
         db.table("topics")
-        .select("id, cluster_id, label, conversation_id")
+        .select(f"id, {TOPIC_NODE_FOREIGN_KEY_COLUMN}, label, conversation_id")
         .eq("user_id", user_id)
         .eq("conversation_id", conversation_id)
         .execute()
     ).data or []
-    cluster_ids = sorted(
-        {str(row["cluster_id"]) for row in topic_rows if row.get("cluster_id") is not None}
+    topic_node_ids = sorted(
+        {
+            str(row[TOPIC_NODE_FOREIGN_KEY_COLUMN])
+            for row in topic_rows
+            if row.get(TOPIC_NODE_FOREIGN_KEY_COLUMN) is not None
+        }
     )
-    cluster_rows: list[dict[str, Any]] = []
-    if cluster_ids:
-        cluster_rows = (
-            db.table("topic_clusters")
-            .select("id, canonical_label")
-            .eq("user_id", user_id)
-            .in_("id", cluster_ids)
-            .execute()
-        ).data or []
+    topic_node_labels = load_topic_node_label_map(db, user_id, topic_node_ids)
+    topic_node_rows = [
+        {"id": node_id, "label": label} for node_id, label in topic_node_labels.items()
+    ]
     topic_labels = _build_topic_labels_by_conversation(
         topic_rows,
-        cluster_rows,
+        topic_node_rows,
     ).get(conversation_id, [])
 
     logger.info(
@@ -546,10 +543,7 @@ def create_commitment(
 
     created = insert_result.data[0]
     existing_index = (
-        db.table("user_index")
-        .select("commitment_count")
-        .eq("user_id", user_id)
-        .execute()
+        db.table("user_index").select("commitment_count").eq("user_id", user_id).execute()
     )
     if existing_index.data:
         current_commitment_count = int(existing_index.data[0].get("commitment_count") or 0)
